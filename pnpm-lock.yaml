@@ -275,6 +275,9 @@ importers:
       '@solar-system/render-engine':
         specifier: workspace:*
         version: link:../render-engine
+      '@solar-system/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       '@types/three':
         specifier: ^0.169.0
         version: 0.169.0

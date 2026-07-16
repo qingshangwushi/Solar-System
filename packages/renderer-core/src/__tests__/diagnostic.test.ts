@@ -75,14 +75,18 @@ describe('Diagnostic Panel', () => {
 
       const info = panel.getDiagnosticInfo();
       expect(info.errors.length).toBe(1);
-      expect(info.errors[0].message).toBe('Test error');
+      const firstError = info.errors[0];
+      expect(firstError).toBeDefined();
+      expect(firstError!.message).toBe('Test error');
     });
 
     it('should log critical errors', () => {
       panel.logError(new Error('Critical error'), 'critical');
 
       const info = panel.getDiagnosticInfo();
-      expect(info.errors[0].severity).toBe('critical');
+      const firstError = info.errors[0];
+      expect(firstError).toBeDefined();
+      expect(firstError!.severity).toBe('critical');
     });
 
     it('should limit error history', () => {
@@ -101,7 +105,9 @@ describe('Diagnostic Panel', () => {
 
       const info = panel.getDiagnosticInfo();
       expect(info.warnings.length).toBe(1);
-      expect(info.warnings[0].category).toBe('performance');
+      const firstWarning = info.warnings[0];
+      expect(firstWarning).toBeDefined();
+      expect(firstWarning!.category).toBe('performance');
     });
 
     it('should track different warning categories', () => {

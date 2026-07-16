@@ -7,7 +7,6 @@ import {
   getRecommendedTextureSize,
   getRecommendedShadowResolution,
   getRecommendedParticleCount,
-  QualityLevel,
 } from '../quality.js';
 
 describe('Quality System', () => {

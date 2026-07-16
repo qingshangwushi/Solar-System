@@ -465,16 +465,19 @@ export class EventsServiceImpl implements EventsService {
       results = results.filter((e) => options.types!.includes(e.type));
     }
     
-    if (options.startDate) {
-      results = results.filter((e) => e.startDate >= options.startDate);
+    const startDate = options.startDate;
+    if (startDate) {
+      results = results.filter((e) => e.startDate >= startDate);
     }
     
-    if (options.endDate) {
-      results = results.filter((e) => e.endDate <= options.endDate);
+    const endDate = options.endDate;
+    if (endDate) {
+      results = results.filter((e) => e.endDate <= endDate);
     }
     
-    if (options.body) {
-      results = results.filter((e) => e.bodies.includes(options.body));
+    const body = options.body;
+    if (body) {
+      results = results.filter((e) => e.bodies.includes(body));
     }
     
     if (options.limit) {
@@ -614,6 +617,7 @@ export class CruiseServiceImpl implements CruiseService {
     
     for (let i = 0; i < this.currentCruise.waypoints.length; i++) {
       const waypoint = this.currentCruise.waypoints[i];
+      if (!waypoint) continue;
       const waypointTotal = (waypoint.duration + waypoint.pauseDuration) * 60 * 1000;
       
       if (this.elapsedTime < accumulatedTime + waypointTotal) {

@@ -138,29 +138,15 @@ export const PLANET_RADII_KM: Record<BodyId, number> = {
 };
 
 export class SunRendererImpl implements SunRenderer {
-  bodyId: BodyId = PLANET_BODY_IDS.SUN;
+  bodyId: BodyId = PLANET_BODY_IDS.SUN ?? 10;
   assetTier: AssetTier = 'S';
   enabled = true;
   
   private coronaIntensity = 1.0;
-  private flareActivity = 0.3;
-  private lodLevel = 0;
-  private positionValue: Vec3d = { x: 0, y: 0, z: 0 };
-  private orientationValue: Quat = { w: 1, x: 0, y: 0, z: 0 };
-  private sunDirectionValue: Vec3d = { x: 1, y: 0, z: 0 };
   
-  update(time: number, position: Vec3d, orientation: Quat, sunDirection: Vec3d): void {
-    void time;
-    this.positionValue = { ...position };
-    this.orientationValue = { ...orientation };
-    this.sunDirectionValue = { ...sunDirection };
-  }
+  update(_time: number, _position: Vec3d, _orientation: Quat, _sunDirection: Vec3d): void {}
   
-  render(): void {
-    void this.positionValue;
-    void this.orientationValue;
-    void this.sunDirectionValue;
-  }
+  render(): void {}
   
   dispose(): void {}
   
@@ -168,17 +154,13 @@ export class SunRendererImpl implements SunRenderer {
     return SOLAR_RADIUS_KM * 1000 * (1 + this.coronaIntensity * 0.1);
   }
   
-  setLOD(level: number): void {
-    this.lodLevel = level;
-  }
+  setLOD(_level: number): void {}
   
   setCoronaIntensity(intensity: number): void {
     this.coronaIntensity = Math.max(0, Math.min(2, intensity));
   }
   
-  setFlareActivity(activity: number): void {
-    this.flareActivity = Math.max(0, Math.min(1, activity));
-  }
+  setFlareActivity(_activity: number): void {}
 }
 
 export class SolidPlanetRenderer implements BodyRenderer {
@@ -186,22 +168,12 @@ export class SolidPlanetRenderer implements BodyRenderer {
   assetTier: AssetTier;
   enabled = true;
   
-  private positionValue: Vec3d = { x: 0, y: 0, z: 0 };
-  private orientationValue: Quat = { w: 1, x: 0, y: 0, z: 0 };
-  private sunDirectionValue: Vec3d = { x: 1, y: 0, z: 0 };
-  private lodLevel = 0;
-  
   constructor(bodyId: BodyId, assetTier: AssetTier = 'S') {
     this.bodyId = bodyId;
     this.assetTier = assetTier;
   }
   
-  update(time: number, position: Vec3d, orientation: Quat, sunDirection: Vec3d): void {
-    void time;
-    this.positionValue = { ...position };
-    this.orientationValue = { ...orientation };
-    this.sunDirectionValue = { ...sunDirection };
-  }
+  update(_time: number, _position: Vec3d, _orientation: Quat, _sunDirection: Vec3d): void {}
   
   render(): void {}
   
@@ -211,21 +183,15 @@ export class SolidPlanetRenderer implements BodyRenderer {
     return (PLANET_RADII_KM[this.bodyId] || 1000) * 1000;
   }
   
-  setLOD(level: number): void {
-    this.lodLevel = level;
-  }
+  setLOD(_level: number): void {}
 }
 
 export class EarthRendererImpl implements EarthRenderer {
-  bodyId: BodyId = PLANET_BODY_IDS.EARTH;
+  bodyId: BodyId = PLANET_BODY_IDS.EARTH ?? 399;
   assetTier: AssetTier = 'S';
   enabled = true;
   
   private atmoParams: AtmosphereParams;
-  private cloudCoverage = 0.5;
-  private nightLightsEnabled = true;
-  private aurorasEnabled = true;
-  private lodLevel = 0;
   
   constructor() {
     this.atmoParams = {
@@ -240,12 +206,7 @@ export class EarthRendererImpl implements EarthRenderer {
     };
   }
   
-  update(time: number, position: Vec3d, orientation: Quat, sunDirection: Vec3d): void {
-    void time;
-    void position;
-    void orientation;
-    void sunDirection;
-  }
+  update(_time: number, _position: Vec3d, _orientation: Quat, _sunDirection: Vec3d): void {}
   
   render(): void {}
   
@@ -255,25 +216,17 @@ export class EarthRendererImpl implements EarthRenderer {
     return this.atmoParams.atmosphereRadius;
   }
   
-  setLOD(level: number): void {
-    this.lodLevel = level;
-  }
+  setLOD(_level: number): void {}
   
   setAtmosphereParams(params: AtmosphereParams): void {
     this.atmoParams = { ...params };
   }
   
-  setCloudCoverage(coverage: number): void {
-    this.cloudCoverage = Math.max(0, Math.min(1, coverage));
-  }
+  setCloudCoverage(_coverage: number): void {}
   
-  enableNightLights(enable: boolean): void {
-    this.nightLightsEnabled = enable;
-  }
+  enableNightLights(_enable: boolean): void {}
   
-  enableAuroras(enable: boolean): void {
-    this.aurorasEnabled = enable;
-  }
+  enableAuroras(_enable: boolean): void {}
 }
 
 export class GasGiantRendererImpl implements GasGiantRenderer {
@@ -281,20 +234,11 @@ export class GasGiantRendererImpl implements GasGiantRenderer {
   assetTier: AssetTier = 'S';
   enabled = true;
   
-  private cloudBandSpeed = 1.0;
-  private stormEffectsEnabled = true;
-  private lodLevel = 0;
-  
   constructor(bodyId: BodyId) {
     this.bodyId = bodyId;
   }
   
-  update(time: number, position: Vec3d, orientation: Quat, sunDirection: Vec3d): void {
-    void time;
-    void position;
-    void orientation;
-    void sunDirection;
-  }
+  update(_time: number, _position: Vec3d, _orientation: Quat, _sunDirection: Vec3d): void {}
   
   render(): void {}
   
@@ -304,34 +248,21 @@ export class GasGiantRendererImpl implements GasGiantRenderer {
     return (PLANET_RADII_KM[this.bodyId] || 1000) * 1000;
   }
   
-  setLOD(level: number): void {
-    this.lodLevel = level;
-  }
+  setLOD(_level: number): void {}
   
-  setCloudBandSpeed(speed: number): void {
-    this.cloudBandSpeed = Math.max(0.1, speed);
-  }
+  setCloudBandSpeed(_speed: number): void {}
   
-  enableStormEffects(enable: boolean): void {
-    this.stormEffectsEnabled = enable;
-  }
+  enableStormEffects(_enable: boolean): void {}
 }
 
 export class RingRendererImpl implements RingRenderer {
-  bodyId: BodyId = PLANET_BODY_IDS.SATURN;
+  bodyId: BodyId = PLANET_BODY_IDS.SATURN ?? 699;
   assetTier: AssetTier = 'S';
   enabled = true;
   
   private ringOpacity = 1.0;
-  private shadowEnabled = true;
-  private lodLevel = 0;
   
-  update(time: number, position: Vec3d, orientation: Quat, sunDirection: Vec3d): void {
-    void time;
-    void position;
-    void orientation;
-    void sunDirection;
-  }
+  update(_time: number, _position: Vec3d, _orientation: Quat, _sunDirection: Vec3d): void {}
   
   render(): void {}
   
@@ -341,17 +272,13 @@ export class RingRendererImpl implements RingRenderer {
     return 136775000;
   }
   
-  setLOD(level: number): void {
-    this.lodLevel = level;
-  }
+  setLOD(_level: number): void {}
   
   setRingOpacity(opacity: number): void {
     this.ringOpacity = Math.max(0, Math.min(1, opacity));
   }
   
-  enableShadow(enable: boolean): void {
-    this.shadowEnabled = enable;
-  }
+  enableShadow(_enable: boolean): void {}
 }
 
 export class BodyRendererFactoryImpl implements BodyRendererFactory {

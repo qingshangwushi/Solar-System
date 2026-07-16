@@ -8,7 +8,6 @@ import {
   lerp,
   blendColors,
   DEFAULT_TONE_MAPPING,
-  DEFAULT_BLOOM,
   DEFAULT_COLOR_GRADING,
   DEFAULT_VIGNETTE,
 } from '../hdr.js';

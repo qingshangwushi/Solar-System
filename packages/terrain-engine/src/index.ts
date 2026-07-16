@@ -84,6 +84,8 @@ export interface SurfaceCamera {
   setTarget(target: Vec3d): void;
   setSpeed(speed: number): void;
   clampToSurface(minHeight: number): void;
+  getSurfaceHeight(lat: number, lng: number): number;
+  getSurfaceNormal(lat: number, lng: number): Vec3d;
 }
 
 export interface TerrainEngine {
@@ -407,7 +409,6 @@ export class SurfaceCameraImpl implements SurfaceCamera {
   
   private speed = 1000;
   private planetRadius = 6371000;
-  private terrainData: Map<string, number[]> = new Map();
   
   update(deltaTime: number): void {
     const dx = this.target.x - this.position.x;
@@ -481,15 +482,13 @@ export class SurfaceCameraImpl implements SurfaceCamera {
 export class TerrainEngineImpl implements TerrainEngine {
   private lodController: TerrainLODController;
   private surfaceCamera: SurfaceCamera;
-  private bodyId: number = 0;
   
   constructor() {
     this.lodController = new TerrainLODControllerImpl();
     this.surfaceCamera = new SurfaceCameraImpl();
   }
   
-  init(bodyId: number): void {
-    this.bodyId = bodyId;
+  init(_bodyId: number): void {
     this.lodController = new TerrainLODControllerImpl();
   }
   
@@ -516,16 +515,4 @@ export const createTerrainEngine = (): TerrainEngine => {
   return new TerrainEngineImpl();
 };
 
-export type {
-  TileId,
-  TileLevel,
-  TileFace,
-  TileCoord,
-  TileBounds,
-  Tile,
-  TerrainTile,
-  QuadTreeNode,
-  TerrainLODController,
-  SurfaceCamera,
-  TerrainEngine,
-};
+

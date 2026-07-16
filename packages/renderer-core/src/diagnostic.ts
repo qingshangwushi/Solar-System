@@ -186,8 +186,9 @@ export class DiagnosticPanel {
   }
 
   getMemoryInfo(): MemoryInfo | null {
-    if (performance.memory) {
-      const mem = performance.memory as unknown as MemoryInfo;
+    const perf = performance as unknown as { memory?: MemoryInfo };
+    if (perf.memory) {
+      const mem = perf.memory;
       return {
         usedJSHeapSize: mem.usedJSHeapSize,
         totalJSHeapSize: mem.totalJSHeapSize,
@@ -222,10 +223,10 @@ export class DiagnosticPanel {
     }
 
     const sum = this.performanceHistory.reduce(
-      (acc, m) => ({
+      (acc: { fps: number; frameTime: number; gpuTime: number; drawCalls: number; triangles: number; memoryUsed: number }, m) => ({
         fps: acc.fps + m.fps,
         frameTime: acc.frameTime + m.frameTime,
-        gpuTime: acc.gpuTime + (m.gpuTime || 0),
+        gpuTime: acc.gpuTime + (m.gpuTime ?? 0),
         drawCalls: acc.drawCalls + m.drawCalls,
         triangles: acc.triangles + m.triangles,
         memoryUsed: acc.memoryUsed + m.memoryUsed,
@@ -234,11 +235,12 @@ export class DiagnosticPanel {
     );
 
     const count = this.performanceHistory.length;
+    const avgGpuTime = sum.gpuTime / count;
 
     return {
       fps: sum.fps / count,
       frameTime: sum.frameTime / count,
-      gpuTime: sum.gpuTime / count || null,
+      gpuTime: avgGpuTime > 0 ? avgGpuTime : null,
       drawCalls: sum.drawCalls / count,
       triangles: sum.triangles / count,
       memoryUsed: sum.memoryUsed / count,
