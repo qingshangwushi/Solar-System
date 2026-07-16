@@ -78,3 +78,7 @@ export function resetWasmCache(): void {
   cachedModule = null;
   loadingPromise = null;
 }
+
+export * from './time.js';
+export * from './reference-frame.js';
+export * from './ephemeris.js';
