@@ -577,12 +577,3 @@ export class ContentServiceImpl implements ContentService {
 export const createContentService = (data?: Record<BodyId, ContentCard>): ContentService => {
   return new ContentServiceImpl(data);
 };
-
-export type {
-  RealityTier,
-  PrecisionLevel,
-  BasicParams,
-  ContentSection,
-  ContentCard,
-  ContentService,
-};

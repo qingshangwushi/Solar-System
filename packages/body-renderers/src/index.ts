@@ -1,6 +1,6 @@
-import type { Vec3d, Quat } from '@solar-system/schemas';
+import type { Vec3d, Quatd as Quat } from '@solar-system/schemas';
 
-export type BodyId = number;
+export type BodyId = number | string;
 
 export type AssetTier = 'S' | 'A' | 'B' | 'C';
 
@@ -260,9 +260,11 @@ export class RingRendererImpl implements RingRenderer {
   assetTier: AssetTier = 'S';
   enabled = true;
   
-  private ringOpacity = 1.0;
+  private _ringOpacity = 1.0;
   
-  update(_time: number, _position: Vec3d, _orientation: Quat, _sunDirection: Vec3d): void {}
+  update(_time: number, _position: Vec3d, _orientation: Quat, _sunDirection: Vec3d): void {
+    void this._ringOpacity;
+  }
   
   render(): void {}
   
@@ -275,7 +277,7 @@ export class RingRendererImpl implements RingRenderer {
   setLOD(_level: number): void {}
   
   setRingOpacity(opacity: number): void {
-    this.ringOpacity = Math.max(0, Math.min(1, opacity));
+    this._ringOpacity = Math.max(0, Math.min(1, opacity));
   }
   
   enableShadow(_enable: boolean): void {}
@@ -357,15 +359,4 @@ export class BodyRendererFactoryImpl implements BodyRendererFactory {
 
 export const createBodyRendererFactory = (): BodyRendererFactory => {
   return new BodyRendererFactoryImpl();
-};
-
-export type {
-  BodyRenderer,
-  BodyRendererFactory,
-  BodyRendererOptions,
-  SunRenderer,
-  EarthRenderer,
-  GasGiantRenderer,
-  RingRenderer,
-  AtmosphereParams,
 };

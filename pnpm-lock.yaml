@@ -114,6 +114,9 @@ importers:
       '@solar-system/render-engine':
         specifier: workspace:*
         version: link:../render-engine
+      '@solar-system/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       '@types/three':
         specifier: ^0.169.0
         version: 0.169.0
@@ -155,6 +158,12 @@ importers:
       '@solar-system/astro-core-api':
         specifier: workspace:*
         version: link:../astro-core-api
+      '@solar-system/body-renderers':
+        specifier: workspace:*
+        version: link:../body-renderers
+      '@solar-system/schemas':
+        specifier: workspace:*
+        version: link:../schemas
     devDependencies:
       typescript:
         specifier: ^5.6.3

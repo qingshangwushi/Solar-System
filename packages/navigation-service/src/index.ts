@@ -117,10 +117,10 @@ export const SOLAR_SYSTEM_BODIES: BodyEntry[] = [
   { bodyId: 951, type: 'asteroid', parentBodyId: 10, nameZh: '加斯普拉', nameEn: 'Gaspra', aliases: [], assetTier: 'B', radiusKm: 8.5 },
   { bodyId: 243, type: 'asteroid', parentBodyId: 10, nameZh: '艾达', nameEn: 'Ida', aliases: [], assetTier: 'B', radiusKm: 14.4 },
   { bodyId: 25143, type: 'asteroid', parentBodyId: 10, nameZh: '系川', nameEn: 'Itokawa', aliases: [], assetTier: 'B', radiusKm: 0.18 },
-  { bodyId: 1P, type: 'comet', parentBodyId: 10, nameZh: '哈雷彗星', nameEn: 'Halley', aliases: ['1P/Halley'], assetTier: 'A', radiusKm: 11 },
-  { bodyId: 19P, type: 'comet', parentBodyId: 10, nameZh: '博雷利彗星', nameEn: 'Borrelly', aliases: [], assetTier: 'B', radiusKm: 4.8 },
-  { bodyId: 81P, type: 'comet', parentBodyId: 10, nameZh: '怀尔德2号彗星', nameEn: 'Wild 2', aliases: [], assetTier: 'B', radiusKm: 2.7 },
-  { bodyId: 9P, type: 'comet', parentBodyId: 10, nameZh: '坦普尔1号彗星', nameEn: 'Tempel 1', aliases: [], assetTier: 'B', radiusKm: 3.0 },
+  { bodyId: '1P', type: 'comet', parentBodyId: 10, nameZh: '哈雷彗星', nameEn: 'Halley', aliases: ['1P/Halley'], assetTier: 'A', radiusKm: 11 },
+  { bodyId: '19P', type: 'comet', parentBodyId: 10, nameZh: '博雷利彗星', nameEn: 'Borrelly', aliases: [], assetTier: 'B', radiusKm: 4.8 },
+  { bodyId: '81P', type: 'comet', parentBodyId: 10, nameZh: '怀尔德2号彗星', nameEn: 'Wild 2', aliases: [], assetTier: 'B', radiusKm: 2.7 },
+  { bodyId: '9P', type: 'comet', parentBodyId: 10, nameZh: '坦普尔1号彗星', nameEn: 'Tempel 1', aliases: [], assetTier: 'B', radiusKm: 3.0 },
 ];
 
 const PINYIN_MAP: Record<string, string> = {
@@ -213,9 +213,12 @@ export class NavigationServiceImpl implements NavigationService {
       } else if (body.nameZh.includes(normalizedQuery) || body.nameEn.toLowerCase().includes(normalizedQuery)) {
         matchType = 'fuzzy';
         score = 50;
-      } else if (this.getPinyin(body.nameZh).includes(normalizedQuery)) {
-        matchType = 'pinyin';
-        score = 40;
+      } else {
+        const pinyinEntry = this.pinyinIndex.find((e) => e.bodyId === body.bodyId);
+        if (pinyinEntry && (pinyinEntry.fullPinyin.includes(normalizedQuery) || pinyinEntry.firstLetter.toLowerCase() === normalizedQuery)) {
+          matchType = 'pinyin';
+          score = 40;
+        }
       }
       
       if (score > 0) {
@@ -406,14 +409,4 @@ export class NavigationServiceImpl implements NavigationService {
 
 export const createNavigationService = (bodies?: BodyEntry[]): NavigationService => {
   return new NavigationServiceImpl(bodies);
-};
-
-export type {
-  BodyType,
-  AssetTier,
-  BodyEntry,
-  NavigationResult,
-  NavigationService,
-  Vec3d,
-  ScreenEdgeIndicator,
 };

@@ -10,7 +10,9 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@solar-system/astro-core-api": "workspace:*"
+    "@solar-system/astro-core-api": "workspace:*",
+    "@solar-system/body-renderers": "workspace:*",
+    "@solar-system/schemas": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.6.3"
