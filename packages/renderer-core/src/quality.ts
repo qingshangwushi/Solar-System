@@ -328,7 +328,7 @@ export class PerformanceMonitor {
       gpuTime: this.gpuTimer?.getGPUTime() ?? null,
       drawCalls: this.drawCalls,
       triangles: this.triangles,
-      memoryUsed: performance.memory ? (performance.memory as unknown as { usedJSHeapSize: number }).usedJSHeapSize : 0,
+      memoryUsed: (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0,
     };
   }
 
@@ -347,11 +347,13 @@ export class PerformanceMonitor {
     const currentIndex = levels.indexOf(currentLevel);
 
     if (this.shouldDowngrade(currentLevel) && currentIndex > 0) {
-      return levels[currentIndex - 1];
+      const result = levels[currentIndex - 1];
+      return result ?? null;
     }
 
     if (this.shouldUpgrade(currentLevel) && currentIndex < levels.length - 1) {
-      return levels[currentIndex + 1];
+      const result = levels[currentIndex + 1];
+      return result ?? null;
     }
 
     return null;
@@ -395,9 +397,9 @@ class GPUTimer {
       if (timerQuery) {
         const disjoint = this.gl.getParameter(timerQuery.GPU_DISJOINT_EXT);
         if (!disjoint) {
-          const available = this.gl.getQueryObjectParameter(this.query, this.gl.QUERY_RESULT_AVAILABLE);
+          const available = this.gl.getQueryParameter(this.query, this.gl.QUERY_RESULT_AVAILABLE);
           if (available) {
-            this.gpuTime = this.gl.getQueryObjectParameter(this.query, this.gl.QUERY_RESULT) / 1000000;
+            this.gpuTime = this.gl.getQueryParameter(this.query, this.gl.QUERY_RESULT) / 1000000;
           }
         }
       }

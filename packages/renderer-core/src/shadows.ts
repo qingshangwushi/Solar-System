@@ -168,12 +168,6 @@ export function computeEclipseGeometry(
       obscuration = (moonAngularRadius / sunAngularRadius) ** 2; // Annular
     }
   } else if (separation < sumRadii) {
-    // Partial eclipse - approximate area overlap
-    const r = sunAngularRadius;
-    const R = moonAngularRadius;
-    const k = separation;
-
-    // Simplified overlap calculation
     const overlapFactor = (sumRadii - separation) / sumRadii;
     obscuration = overlapFactor * Math.min(1, (moonAngularRadius / sunAngularRadius) ** 2);
   }
@@ -197,7 +191,7 @@ export function computeEclipseGeometry(
 
 export function computeLunarEclipse(
   sunPosition: Vec3d,
-  sunRadius: number,
+  _sunRadius: number,
   earthPosition: Vec3d,
   earthRadius: number,
   moonPosition: Vec3d,
@@ -223,9 +217,6 @@ export function computeLunarEclipse(
   const moonDist = Math.sqrt(
     earthToMoon.x ** 2 + earthToMoon.y ** 2 + earthToMoon.z ** 2,
   );
-
-  // Angular radius of sun from Earth
-  const sunAngularRadius = Math.asin(sunRadius / sunDist);
 
   // Shadow cone radii at moon distance
   // Umbra: cone converging behind Earth
@@ -301,7 +292,7 @@ export function computeLunarEclipse(
 export function computeShadowOnSurface(
   shadowCone: ShadowCone,
   surfacePoint: Vec3d,
-  surfaceNormal: Vec3d,
+  _surfaceNormal: Vec3d,
 ): { umbra: boolean; penumbra: boolean; intensity: number } {
   const toSurface = {
     x: surfacePoint.x - shadowCone.apex.x,
@@ -340,7 +331,7 @@ export function computeShadowMapParams(
   lightPosition: Vec3d,
   casterPosition: Vec3d,
   casterRadius: number,
-  targetRadius: number,
+  _targetRadius: number,
   targetPosition: Vec3d,
 ): { projectionMatrix: number[]; viewMatrix: number[]; resolution: number } {
   const direction = normalize({
@@ -383,9 +374,9 @@ export function computeShadowMapParams(
 
 export function computeContactTimes(
   sunPosition: Vec3d,
-  sunRadius: number,
-  moonPosition: Vec3d,
-  moonRadius: number,
+  _sunRadius: number,
+  _moonPosition: Vec3d,
+  _moonRadius: number,
   observerPosition: Vec3d,
   mjd: number,
 ): ContactPoint[] {
@@ -396,27 +387,6 @@ export function computeContactTimes(
     y: sunPosition.y - observerPosition.y,
     z: sunPosition.z - observerPosition.z,
   });
-
-  const moonDir = normalize({
-    x: moonPosition.x - observerPosition.x,
-    y: moonPosition.y - observerPosition.y,
-    z: moonPosition.z - observerPosition.z,
-  });
-
-  const separation = Math.acos(Math.max(-1, Math.min(1, dot(sunDir, moonDir))));
-
-  const sunDist = Math.sqrt(
-    (sunPosition.x - observerPosition.x) ** 2 +
-    (sunPosition.y - observerPosition.y) ** 2 +
-    (sunPosition.z - observerPosition.z) ** 2,
-  );
-
-  const sunAngularRadius = Math.asin(sunRadius / sunDist);
-  const moonAngularRadius = Math.asin(moonRadius / Math.sqrt(
-    (moonPosition.x - observerPosition.x) ** 2 +
-    (moonPosition.y - observerPosition.y) ** 2 +
-    (moonPosition.z - observerPosition.z) ** 2,
-  ));
 
   contacts.push({
     time: mjd,

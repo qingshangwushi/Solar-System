@@ -292,17 +292,23 @@ export function findNearestSnapshot(snapshots: StateSnapshot[], mjd: number): St
   
   while (right - left > 1) {
     const mid = Math.floor((left + right) / 2);
-    if (snapshots[mid].mjd < mjd) {
+    const midSnapshot = snapshots[mid];
+    if (!midSnapshot) break;
+    if (midSnapshot.mjd < mjd) {
       left = mid;
     } else {
       right = mid;
     }
   }
   
-  const dtLeft = Math.abs(mjd - snapshots[left].mjd);
-  const dtRight = Math.abs(mjd - snapshots[right].mjd);
+  const leftSnapshot = snapshots[left];
+  const rightSnapshot = snapshots[right];
+  if (!leftSnapshot || !rightSnapshot) return snapshots[0];
   
-  return dtLeft <= dtRight ? snapshots[left] : snapshots[right];
+  const dtLeft = Math.abs(mjd - leftSnapshot.mjd);
+  const dtRight = Math.abs(mjd - rightSnapshot.mjd);
+  
+  return dtLeft <= dtRight ? leftSnapshot : rightSnapshot;
 }
 
 export function findSnapshotsAround(snapshots: StateSnapshot[], mjd: number): {
@@ -313,20 +319,27 @@ export function findSnapshotsAround(snapshots: StateSnapshot[], mjd: number): {
     return { before: undefined, after: undefined };
   }
   
+  const firstSnapshot = snapshots[0];
+  if (!firstSnapshot) return { before: undefined, after: undefined };
+  
   let left = 0;
   let right = snapshots.length - 1;
+  const lastSnapshot = snapshots[right];
+  if (!lastSnapshot) return { before: undefined, after: undefined };
   
-  if (mjd <= snapshots[0].mjd) {
-    return { before: undefined, after: snapshots[0] };
+  if (mjd <= firstSnapshot.mjd) {
+    return { before: undefined, after: firstSnapshot };
   }
   
-  if (mjd >= snapshots[right].mjd) {
-    return { before: snapshots[right], after: undefined };
+  if (mjd >= lastSnapshot.mjd) {
+    return { before: lastSnapshot, after: undefined };
   }
   
   while (right - left > 1) {
     const mid = Math.floor((left + right) / 2);
-    if (snapshots[mid].mjd < mjd) {
+    const midSnapshot = snapshots[mid];
+    if (!midSnapshot) break;
+    if (midSnapshot.mjd < mjd) {
       left = mid;
     } else {
       right = mid;

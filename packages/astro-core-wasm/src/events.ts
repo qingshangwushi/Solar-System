@@ -148,7 +148,8 @@ export function findAllRoots(
     const nextT = Math.min(t + step, endTime);
     const root = findRoot(func, t, nextT, tolerance, maxIterations);
     if (root !== null) {
-      if (roots.length === 0 || Math.abs(root - roots[roots.length - 1]) > step / 2) {
+      const lastRoot = roots[roots.length - 1];
+      if (roots.length === 0 || !lastRoot || Math.abs(root - lastRoot) > step / 2) {
         roots.push(root);
       }
     }
@@ -360,7 +361,6 @@ export function findOrbitalExtrema(
   const results: EventResult[] = [];
 
   const func = (mjd: number) => {
-    const bodyPos = bodyEvaluator(mjd);
     const centralPos = centralEvaluator(mjd);
 
     const dt = 1e-5;
@@ -369,7 +369,6 @@ export function findOrbitalExtrema(
 
     const rPlus = computeOrbitalRadius(bodyPosPlus, centralPos);
     const rMinus = computeOrbitalRadius(bodyPosMinus, centralPos);
-    const r = computeOrbitalRadius(bodyPos, centralPos);
 
     const derivative = (rPlus - rMinus) / (2 * dt);
     return derivative;
@@ -415,7 +414,7 @@ export function findOrbitalExtrema(
 
 export function computeNodeCrossing(
   bodyPosition: Vec3d,
-  bodyVelocity: Vec3d,
+  _bodyVelocity: Vec3d,
   centralBodyPosition: Vec3d,
   ascending: boolean,
 ): number {
@@ -424,15 +423,6 @@ export function computeNodeCrossing(
     y: bodyPosition.y - centralBodyPosition.y,
     z: bodyPosition.z - centralBodyPosition.z,
   };
-
-  const angularMomentum = cross(relPos, bodyVelocity);
-  const n = normalize(angularMomentum);
-
-  const zAxis = { x: 0, y: 0, z: 1 };
-
-  const nodeLine = normalize(cross(n, zAxis));
-
-  const dotProduct = dot(relPos, nodeLine);
 
   if (ascending) {
     return relPos.z;
@@ -559,6 +549,7 @@ export function findEclipses(
     });
 
     const earthAngularRadius = Math.asin(earthRadius / earthMoonDist);
+    const moonAngularRadius = Math.asin(moonRadius / earthMoonDist);
 
     return angularSeparation - (earthAngularRadius + moonAngularRadius);
   };

@@ -10,7 +10,6 @@ import {
   cross,
   norm,
   normalize,
-  EventResult,
 } from '../events.js';
 
 describe('Event Algorithms', () => {

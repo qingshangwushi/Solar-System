@@ -180,7 +180,6 @@ function filmicToneMapping(
 ): [number, number, number] {
   const shoulderStrength = params.shoulderStrength ?? 0.22;
   const linearStrength = params.linearStrength ?? 0.30;
-  const linearAngle = params.linearAngle ?? 0.10;
   const toeStrength = params.toeStrength ?? 0.20;
   const toeNumerator = params.toeNumerator ?? 0.01;
   const toeDenominator = params.toeDenominator ?? 0.30;

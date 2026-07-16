@@ -91,14 +91,16 @@ describe('Attitude System', () => {
   describe('Rotation Angle', () => {
     it('should compute rotation angle at J2000', () => {
       const model = DEFAULT_AXIAL_MODELS.Earth;
-      const angle = computeRotationAngle(51544.5, model);
+      expect(model).toBeDefined();
+      const angle = computeRotationAngle(51544.5, model!);
       expect(angle).toBeCloseTo(0, 10);
     });
 
     it('should compute rotation angle after one sidereal day', () => {
       const model = DEFAULT_AXIAL_MODELS.Earth;
-      const siderealDays = model.rotationPeriod / 86400;
-      const angle = computeRotationAngle(51544.5 + siderealDays, model);
+      expect(model).toBeDefined();
+      const siderealDays = model!.rotationPeriod / 86400;
+      const angle = computeRotationAngle(51544.5 + siderealDays, model!);
       expect(angle).toBeCloseTo(2 * Math.PI, 6);
     });
   });
@@ -106,7 +108,8 @@ describe('Attitude System', () => {
   describe('Attitude Computation', () => {
     it('should compute Earth attitude', () => {
       const model = DEFAULT_AXIAL_MODELS.Earth;
-      const attitude = computeAttitude(51544.5, model);
+      expect(model).toBeDefined();
+      const attitude = computeAttitude(51544.5, model!);
       const norm = Math.sqrt(
         attitude.orientation.x ** 2 +
         attitude.orientation.y ** 2 +
@@ -119,7 +122,8 @@ describe('Attitude System', () => {
 
     it('should compute Mars attitude', () => {
       const model = DEFAULT_AXIAL_MODELS.Mars;
-      const attitude = computeAttitude(51544.5, model);
+      expect(model).toBeDefined();
+      const attitude = computeAttitude(51544.5, model!);
       const norm = Math.sqrt(
         attitude.orientation.x ** 2 +
         attitude.orientation.y ** 2 +
@@ -131,7 +135,8 @@ describe('Attitude System', () => {
 
     it('should compute Moon attitude (tidally locked)', () => {
       const model = DEFAULT_AXIAL_MODELS.Moon;
-      const attitude = computeAttitude(51544.5, model);
+      expect(model).toBeDefined();
+      const attitude = computeAttitude(51544.5, model!);
       const norm = Math.sqrt(
         attitude.orientation.x ** 2 +
         attitude.orientation.y ** 2 +
@@ -145,9 +150,10 @@ describe('Attitude System', () => {
   describe('Subpoint Computation', () => {
     it('should compute subpoint for observer along positive x-axis', () => {
       const model = DEFAULT_AXIAL_MODELS.Earth;
+      expect(model).toBeDefined();
       const bodyPosition = { x: 0, y: 0, z: 0 };
       const observerPosition = { x: 10000, y: 0, z: 0 };
-      const subpoint = computeSubpoint(bodyPosition, observerPosition, model, 51544.5);
+      const subpoint = computeSubpoint(bodyPosition, observerPosition, model!, 51544.5);
       const norm = Math.sqrt(subpoint.x ** 2 + subpoint.y ** 2 + subpoint.z ** 2);
       expect(norm).toBeCloseTo(1, 10);
     });

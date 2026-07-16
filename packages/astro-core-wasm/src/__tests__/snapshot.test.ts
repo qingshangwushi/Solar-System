@@ -141,9 +141,15 @@ describe('State Snapshot', () => {
       });
       const samples = sampleOrbitUniformly(evaluator, 0, 10, 11);
       expect(samples.length).toBe(11);
-      expect(samples[0].mjd).toBe(0);
-      expect(samples[10].mjd).toBe(10);
-      expect(samples[5].position.x).toBe(5);
+      const first = samples[0];
+      const last = samples[10];
+      const mid = samples[5];
+      expect(first).toBeDefined();
+      expect(last).toBeDefined();
+      expect(mid).toBeDefined();
+      expect(first!.mjd).toBe(0);
+      expect(last!.mjd).toBe(10);
+      expect(mid!.position.x).toBe(5);
     });
 
     it('should sample orbit adaptively', () => {
@@ -153,8 +159,12 @@ describe('State Snapshot', () => {
       });
       const samples = sampleOrbitAdaptive(evaluator, 0, 10, 0.1);
       expect(samples.length).toBeGreaterThanOrEqual(2);
-      expect(samples[0].mjd).toBe(0);
-      expect(samples[samples.length - 1].mjd).toBe(10);
+      const first = samples[0];
+      const last = samples[samples.length - 1];
+      expect(first).toBeDefined();
+      expect(last).toBeDefined();
+      expect(first!.mjd).toBe(0);
+      expect(last!.mjd).toBe(10);
     });
   });
 
@@ -166,8 +176,12 @@ describe('State Snapshot', () => {
       });
       const samples = sampleAttitudeUniformly(evaluator, 0, 1, 5);
       expect(samples.length).toBe(5);
-      expect(samples[0].mjd).toBe(0);
-      expect(samples[4].mjd).toBe(1);
+      const first = samples[0];
+      const last = samples[4];
+      expect(first).toBeDefined();
+      expect(last).toBeDefined();
+      expect(first!.mjd).toBe(0);
+      expect(last!.mjd).toBe(1);
     });
   });
 

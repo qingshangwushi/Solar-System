@@ -128,7 +128,7 @@ export class ResourceManager {
 
       this.lruList.push(descriptor.id);
 
-      return data;
+        return data as T;
     } catch (error) {
       entry.state = 'failed';
       entry.error = error as Error;
@@ -376,7 +376,6 @@ export class MeshLoader implements ResourceLoader<ArrayBuffer> {
 
 export class PriorityLoadQueue {
   private queue: Array<{ descriptor: ResourceDescriptor; options?: LoadOptions; resolve: (value: unknown) => void; reject: (error: Error) => void }> = [];
-  private loading = false;
   private maxConcurrent = 4;
   private currentLoads = 0;
 

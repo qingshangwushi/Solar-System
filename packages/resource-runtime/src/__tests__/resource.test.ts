@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ResourceManager,
   TextureLoader,
@@ -7,7 +7,6 @@ import {
   MeshLoader,
   PriorityLoadQueue,
   ResourceDescriptor,
-  LoadOptions,
 } from '../index.js';
 
 describe('ResourceManager', () => {

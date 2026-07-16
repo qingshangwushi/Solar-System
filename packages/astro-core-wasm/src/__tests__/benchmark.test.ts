@@ -9,16 +9,15 @@ import {
 import {
   multiplyMatrix,
   transposeMatrix,
-  rotateVector,
   matrixToQuaternion,
   quaternionMultiply,
+  rotateVectorQuaternion,
 } from '../reference-frame.js';
 import {
   evaluateChebyshevPolynomial,
   buildChebyshevApproximation,
   evaluateSegment,
   computeOrbitElements,
-  propagateKepler,
 } from '../ephemeris.js';
 import {
   computeAttitude,
@@ -114,7 +113,8 @@ describe('Benchmark Tests', () => {
         m20: 0, m21: 0, m22: 1,
       };
       const vector = { x: 1, y: 0, z: 0 };
-      const rotated = rotateVector(matrix, vector);
+      const quaternion = matrixToQuaternion(matrix);
+      const rotated = rotateVectorQuaternion(quaternion, vector);
       const length = Math.sqrt(rotated.x ** 2 + rotated.y ** 2 + rotated.z ** 2);
       expect(length).toBeCloseTo(1, 10);
     });
@@ -184,20 +184,23 @@ describe('Benchmark Tests', () => {
   describe('Attitude Benchmarks', () => {
     it('should compute Earth rotation at J2000', () => {
       const model = DEFAULT_AXIAL_MODELS.Earth;
-      const angle = computeRotationAngle(51544.5, model);
+      expect(model).toBeDefined();
+      const angle = computeRotationAngle(51544.5, model!);
       expect(angle).toBeCloseTo(0, 10);
     });
 
     it('should compute Earth rotation after half sidereal day', () => {
       const model = DEFAULT_AXIAL_MODELS.Earth;
-      const siderealDays = model.rotationPeriod / 86400;
-      const angle = computeRotationAngle(51544.5 + siderealDays / 2, model);
+      expect(model).toBeDefined();
+      const siderealDays = model!.rotationPeriod / 86400;
+      const angle = computeRotationAngle(51544.5 + siderealDays / 2, model!);
       expect(angle).toBeCloseTo(Math.PI, 6);
     });
 
     it('should compute Earth attitude correctly', () => {
       const model = DEFAULT_AXIAL_MODELS.Earth;
-      const attitude = computeAttitude(51544.5, model);
+      expect(model).toBeDefined();
+      const attitude = computeAttitude(51544.5, model!);
       const norm = Math.sqrt(
         attitude.orientation.x ** 2 +
         attitude.orientation.y ** 2 +
@@ -209,7 +212,8 @@ describe('Benchmark Tests', () => {
 
     it('should compute Mars attitude correctly', () => {
       const model = DEFAULT_AXIAL_MODELS.Mars;
-      const attitude = computeAttitude(51544.5, model);
+      expect(model).toBeDefined();
+      const attitude = computeAttitude(51544.5, model!);
       const norm = Math.sqrt(
         attitude.orientation.x ** 2 +
         attitude.orientation.y ** 2 +

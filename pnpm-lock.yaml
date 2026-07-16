@@ -94,6 +94,10 @@ importers:
         version: 2.1.9(@types/node@22.20.1)
 
   packages/astro-core-wasm:
+    dependencies:
+      '@solar-system/schemas':
+        specifier: workspace:*
+        version: link:../schemas
     devDependencies:
       typescript:
         specifier: ^5.6.3
@@ -123,6 +127,9 @@ importers:
 
   packages/content-service:
     dependencies:
+      '@solar-system/body-renderers':
+        specifier: workspace:*
+        version: link:../body-renderers
       '@solar-system/schemas':
         specifier: workspace:*
         version: link:../schemas

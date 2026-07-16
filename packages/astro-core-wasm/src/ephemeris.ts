@@ -20,18 +20,18 @@ export interface BodyEphemeris {
 export function evaluateChebyshevPolynomial(coefficients: Float64Array, x: number): number {
   const n = coefficients.length;
   if (n === 0) return 0;
-  if (n === 1) return coefficients[0];
+  if (n === 1) return coefficients[0] ?? 0;
   
   let d0 = 0;
   let d1 = 0;
   
   for (let i = n - 1; i >= 1; i--) {
     const temp = d0;
-    d0 = 2 * x * d0 - d1 + coefficients[i];
+    d0 = 2 * x * d0 - d1 + (coefficients[i] ?? 0);
     d1 = temp;
   }
   
-  return x * d0 - d1 + coefficients[0];
+  return x * d0 - d1 + (coefficients[0] ?? 0);
 }
 
 export function evaluateChebyshevDerivative(coefficients: Float64Array, x: number): number {
@@ -40,11 +40,10 @@ export function evaluateChebyshevDerivative(coefficients: Float64Array, x: numbe
   
   let d0 = 0;
   let d1 = 0;
-  let d2 = 0;
   
   for (let i = n - 1; i >= 0; i--) {
     const temp = d0;
-    d0 = 2 * x * d0 - d1 + coefficients[i];
+    d0 = 2 * x * d0 - d1 + (coefficients[i] ?? 0);
     d1 = temp;
   }
   
@@ -53,7 +52,7 @@ export function evaluateChebyshevDerivative(coefficients: Float64Array, x: numbe
   
   for (let i = n - 1; i >= 1; i--) {
     const temp = dd0;
-    dd0 = 2 * x * dd0 - dd1 + i * coefficients[i];
+    dd0 = 2 * x * dd0 - dd1 + i * (coefficients[i] ?? 0);
     dd1 = temp;
   }
   
@@ -67,6 +66,7 @@ export function findSegment(segments: ChebyshevSegment[], mjdTdb: number): Cheby
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
     const seg = segments[mid];
+    if (!seg) return null;
     
     if (mjdTdb >= seg.startMjdTdb && mjdTdb < seg.endMjdTdb) {
       return seg;
@@ -137,7 +137,7 @@ export function evaluateEphemeris(
 
 export function buildChebyshevApproximation(
   samples: Vec3d[],
-  times: number[],
+  _times: number[],
   startMjd: number,
   endMjd: number,
   degree: number,
@@ -155,12 +155,13 @@ export function buildChebyshevApproximation(
     let sumZ = 0;
     
     for (let i = 0; i < n; i++) {
-      const tau_i = (2 * times[i] - startMjd - endMjd) / duration;
+      const sample = samples[i];
+      if (!sample) continue;
       const arg = k * Math.PI * (2 * i + 1) / (2 * n);
       const cosArg = Math.cos(arg);
-      sumX += samples[i].x * cosArg;
-      sumY += samples[i].y * cosArg;
-      sumZ += samples[i].z * cosArg;
+      sumX += sample.x * cosArg;
+      sumY += sample.y * cosArg;
+      sumZ += sample.z * cosArg;
     }
     
     const scale = k === 0 ? 1 / n : 2 / n;
@@ -278,13 +279,10 @@ export function propagateKepler(gm: number, elements: {
   
   const m00 = ca * cap - sa * ci * sap;
   const m01 = -ca * sap - sa * ci * cap;
-  const m02 = sa * si;
   const m10 = sa * cap + ca * ci * sap;
   const m11 = -sa * sap + ca * ci * cap;
-  const m12 = -ca * si;
   const m20 = si * sap;
   const m21 = si * cap;
-  const m22 = ci;
   
   return {
     position: {
@@ -339,9 +337,11 @@ export class EphemerisManager {
     const ephemeris = this.ephemerisMap.get(bodyId);
     if (!ephemeris || ephemeris.segments.length === 0) return null;
     
-    const first = ephemeris.segments[0].startMjdTdb;
-    const last = ephemeris.segments[ephemeris.segments.length - 1].endMjdTdb;
-    return [first, last];
+    const firstSeg = ephemeris.segments[0];
+    const lastSeg = ephemeris.segments[ephemeris.segments.length - 1];
+    if (!firstSeg || !lastSeg) return null;
+    
+    return [firstSeg.startMjdTdb, lastSeg.endMjdTdb];
   }
   
   supports(bodyId: number, timeRange: [number, number] | null): boolean {

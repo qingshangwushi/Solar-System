@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { ReferenceFrame, Precision } from '@solar-system/schemas';
 import {
   evaluateChebyshevPolynomial,
   evaluateChebyshevDerivative,
@@ -9,6 +10,7 @@ import {
   computeOrbitElements,
   propagateKepler,
   EphemerisManager,
+  BodyEphemeris,
 } from '../ephemeris.js';
 
 describe('Chebyshev Polynomial', () => {
@@ -85,11 +87,11 @@ describe('Segment Evaluation', () => {
 describe('Ephemeris Evaluation', () => {
   it('should evaluate ephemeris within range', () => {
     const coeffs = new Float64Array([1, 0, 2, 0, 3, 0]);
-    const ephemeris = {
+    const ephemeris: BodyEphemeris = {
       bodyId: 399,
       centerId: 0,
-      referenceFrame: 'SolarSystemBarycentricInertial',
-      precision: 'P3',
+      referenceFrame: 'SolarSystemBarycentricInertial' as ReferenceFrame,
+      precision: 'P3' as Precision,
       segments: [{
         startMjdTdb: 58000,
         endMjdTdb: 58100,
@@ -105,11 +107,11 @@ describe('Ephemeris Evaluation', () => {
 
   it('should return out of range for time outside coverage', () => {
     const coeffs = new Float64Array([1, 0, 2, 0, 3, 0]);
-    const ephemeris = {
+    const ephemeris: BodyEphemeris = {
       bodyId: 399,
       centerId: 0,
-      referenceFrame: 'SolarSystemBarycentricInertial',
-      precision: 'P3',
+      referenceFrame: 'SolarSystemBarycentricInertial' as ReferenceFrame,
+      precision: 'P3' as Precision,
       segments: [{
         startMjdTdb: 58000,
         endMjdTdb: 58100,

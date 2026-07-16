@@ -1,4 +1,4 @@
-import type { JulianDate, TimeScale, TimeUncertainty } from '@solar-system/schemas';
+import type { JulianDate, TimeScale } from '@solar-system/schemas';
 
 const JD_MJD_OFFSET = 2400000.5;
 const SECONDS_PER_DAY = 86400;
@@ -92,19 +92,10 @@ export function computeTdbOffset(mjdTt: number): number {
   const jdTt = mjdTt + JD_MJD_OFFSET;
   const t = (jdTt - 2451545.0) / 36525.0;
   
-  const gmst = 18.697374558 + 24.06570982441908 * (jdTt - 2451545.0);
-  const lmst = gmst % 24;
-  
-  const eccentricity = 0.016708634 - 0.000042037 * t - 0.0000001267 * t * t;
   const meanAnomaly = 6.24006014 + 628.301955 * t;
   const equationOfCenter = (1.914602 - 0.004817 * t - 0.000014 * t * t) * Math.sin(meanAnomaly)
     + (0.019993 - 0.000101 * t) * Math.sin(2 * meanAnomaly)
     + 0.000289 * Math.sin(3 * meanAnomaly);
-  
-  const earthSunDistanceAU = 1.000001018 * (1 - eccentricity * eccentricity) / (1 + eccentricity * Math.cos(meanAnomaly + equationOfCenter));
-  
-  const dPsi = (0.002558 - 0.000016 * t) * Math.sin(2 * lmst * Math.PI / 12);
-  const dEps = 0.000006 * Math.cos(2 * lmst * Math.PI / 12);
   
   let deltaTdb = (1.658 / 86400.0) * Math.sin(meanAnomaly + equationOfCenter);
   

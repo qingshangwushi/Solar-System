@@ -57,6 +57,27 @@ export interface Quat64 {
   z: number;
 }
 
+/** 四元数（别名）。 */
+export interface Quatd {
+  w: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** 3x3旋转矩阵。 */
+export interface RotMat3x3 {
+  r00: number;
+  r01: number;
+  r02: number;
+  r10: number;
+  r11: number;
+  r12: number;
+  r20: number;
+  r21: number;
+  r22: number;
+}
+
 /** 光照信息（设计文档 42.3 illumination）。 */
 export interface Illumination {
   sun_direction: Vec3d;

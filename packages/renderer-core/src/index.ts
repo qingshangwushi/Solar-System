@@ -282,3 +282,9 @@ export { TileCoordImpl, TileBoundsImpl, TerrainTileImpl, QuadTreeNodeImpl, Terra
 export type { TileId, TileLevel, TileCoord, TileBounds, Tile, TerrainTile, QuadTreeNode, TerrainLODController, AtmosphereRenderer, AtmosphereParams } from './terrain.js';
 export { LogarithmicScaleMapping, PiecewiseScaleMapping, ScaleManager, convertUnit, toMeters, fromMeters, formatDistance, formatTime, ASTRONOMICAL_UNIT, LIGHT_YEAR, PARSEC } from './scale-mapping.js';
 export type { DistanceUnit, ScaleConfig, ScaleMapping } from './scale-mapping.js';
+export { StarData, AsteroidBeltImpl, KuiperBeltImpl, OortCloudImpl, SolarWindImpl, MagnetosphereImpl, AurorasImpl, ExtendedSpaceEnvironmentImpl, createExtendedSpaceEnvironment, ASTEROID_BELT_RADIUS_RANGE, ASTEROID_BELT_THICKNESS, KUIPER_BELT_RADIUS_RANGE, KUIPER_BELT_THICKNESS, OORT_CLOUD_INNER_RADIUS, OORT_CLOUD_OUTER_RADIUS, SOLAR_WIND_SPEED } from './extended-space.js';
+export type { Star, Asteroid, Comet, Particle, ExtendedSpaceEnvironment, StellarBackground, AsteroidBelt, KuiperBelt, OortCloud, SolarWind, Magnetosphere, Auroras } from './extended-space.js';
+export { EventsServiceImpl, CruiseServiceImpl, PureViewingModeImpl, createEventsService, createCruiseService, createPureViewingMode, EVENT_TYPES, CRUISES } from './events-cruises.js';
+export type { EventType, CelestialEvent, CruiseWaypoint, Cruise, EventSearchOptions, EventsService, CruiseService, PureViewingMode } from './events-cruises.js';
+export { ResourceValidatorImpl, UpdateManagerImpl, TestRunnerImpl, OpsManagerImpl, createResourceValidator, createUpdateManager, createTestRunner, createOpsManager } from './productization.js';
+export type { ResourceType, ValidationStatus, ResourceValidationResult, ValidationReport, ResourceValidator, UpdateInfo, UpdateStatus, UpdateManager, TestResult, TestSuiteResult, TestReport, TestEnvironment, TestRunner, MaintenanceTask, OperationalStats, HealthCheckResult, OpsManager } from './productization.js';

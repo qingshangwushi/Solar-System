@@ -4,7 +4,6 @@ import {
   transposeMatrix,
   matrixToQuaternion,
   quaternionToMatrix,
-  rotateVector,
   quaternionMultiply,
   quaternionInverse,
   rotateVectorQuaternion,
