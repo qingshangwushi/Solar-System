@@ -1,0 +1,12 @@
+[package]
+name = "ephemeris-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "星历运行时：分段切比雪夫系数插值（位置/速度），超范围降级"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+coordinate-system.workspace = true

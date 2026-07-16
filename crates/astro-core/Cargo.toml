@@ -1,0 +1,27 @@
+[package]
+name = "astro-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "天文模拟内核：时间+坐标+星历+姿态+事件整合，输出 CelestialStateSnapshot"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+time-system.workspace = true
+coordinate-system.workspace = true
+ephemeris-runtime.workspace = true
+event-engine.workspace = true
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
