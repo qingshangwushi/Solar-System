@@ -1,0 +1,24 @@
+{
+  "name": "solar-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web3D 影视级太阳系真实模拟与交互展示项目",
+  "type": "module",
+  "packageManager": "pnpm@10.28.1",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "build:wasm": "wasm-pack build crates/astro-core --target web --out-dir ../../packages/astro-core-wasm/pkg",
+    "dev": "pnpm --filter web dev",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

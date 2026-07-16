@@ -1,0 +1,11 @@
+[package]
+name = "coordinate-system"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "坐标、参考系与数值精度（双精度向量/矩阵/四元数、参考系转换、高低位拆分）"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

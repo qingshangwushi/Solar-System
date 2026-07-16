@@ -1,0 +1,11 @@
+[package]
+name = "time-system"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "天文时间系统：UTC/TAI/TT/TDB 转换、闰秒、时间倍率与边界"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

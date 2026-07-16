@@ -1,0 +1,12 @@
+[package]
+name = "event-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "天文事件计算引擎：合冲凌日掩星食等目标函数与数值求根"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+coordinate-system.workspace = true
