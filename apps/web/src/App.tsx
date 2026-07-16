@@ -12,6 +12,7 @@ import BottomBar from './components/BottomBar.js';
 import SceneViewport from './components/SceneViewport.js';
 import BootProgress from './components/BootProgress.js';
 import ErrorOverlay from './components/ErrorOverlay.js';
+import DiagnosticsPanel from './components/DiagnosticsPanel.js';
 
 /** 启动阶段（FR-BOOT-005）。 */
 const BOOT_PHASES = [
@@ -89,6 +90,7 @@ export default function App() {
             {!pureMode && <RightPanel />}
           </div>
           {!pureMode && <BottomBar />}
+          <DiagnosticsPanel />
         </>
       )}
     </div>

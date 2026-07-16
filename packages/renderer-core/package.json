@@ -1,5 +1,5 @@
 {
-  "name": "@solar-system/diagnostics",
+  "name": "@solar-system/renderer-core",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -9,6 +9,9 @@
     "build": "tsc",
     "lint": "eslint src",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@solar-system/schemas": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

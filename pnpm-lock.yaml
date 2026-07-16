@@ -130,9 +130,15 @@ importers:
 
   packages/diagnostics:
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/navigation-service:
     dependencies:
@@ -157,43 +163,75 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
-  packages/renderer-webgl2:
+  packages/renderer-core:
     dependencies:
-      '@solar-system/render-engine':
+      '@solar-system/schemas':
         specifier: workspace:*
-        version: link:../render-engine
-      '@types/three':
-        specifier: ^0.169.0
-        version: 0.169.0
-      three:
-        specifier: ^0.169.0
-        version: 0.169.0
+        version: link:../schemas
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.20.1)
+
+  packages/renderer-webgl2:
+    dependencies:
+      '@solar-system/renderer-core':
+        specifier: workspace:*
+        version: link:../renderer-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/renderer-webgpu:
     dependencies:
-      '@solar-system/render-engine':
+      '@solar-system/renderer-core':
         specifier: workspace:*
-        version: link:../render-engine
-      '@types/three':
-        specifier: ^0.169.0
-        version: 0.169.0
-      three:
-        specifier: ^0.169.0
-        version: 0.169.0
+        version: link:../renderer-core
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/resource-runtime:
     devDependencies:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+
+  packages/runtime:
+    dependencies:
+      '@solar-system/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/schemas:
     devDependencies:
@@ -209,6 +247,15 @@ importers:
       vitest:
         specifier: ^2.1.4
         version: 2.1.9(@types/node@22.20.1)
+
+  packages/server:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
 
   packages/terrain-engine:
     dependencies:

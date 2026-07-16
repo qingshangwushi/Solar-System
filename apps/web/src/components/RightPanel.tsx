@@ -1,7 +1,13 @@
-/** 右侧面板：数据与科普 | 物理参数 | 轨道参数 | 真实性说明（设计文档 25.1、27）。 */
+/** 右侧面板：时间控制 | 数据与科普 | 物理参数 | 轨道参数 | 真实性说明（设计文档 25.1、27）。 */
+import TimeControl from './TimeControl';
+
 export default function RightPanel() {
   return (
-    <aside className="flex w-72 flex-col border-l border-space-600 bg-space-800 text-sm">
+    <aside className="flex w-80 flex-col border-l border-space-600 bg-space-800 text-sm">
+      <section className="border-b border-space-600 p-3">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">时间控制</h2>
+        <TimeControl />
+      </section>
       <section className="border-b border-space-600 p-3">
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">数据与科普</h2>
         <div className="space-y-2 text-xs">
