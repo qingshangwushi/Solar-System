@@ -18,6 +18,54 @@ import {
   registerRendererFactory,
 } from '@solar-system/renderer-core';
 
+/**
+ * 计算给定像素格式每个像素占用的字节数。
+ * 覆盖 WebGPU 常见的 unorm/snorm/float/uint/sint 格式。
+ */
+export function bytesPerPixel(format: string): number {
+  switch (format) {
+    case 'r8unorm':
+    case 'r8snorm':
+    case 'r8uint':
+    case 'r8sint':
+      return 1;
+    case 'rg8unorm':
+    case 'rg8snorm':
+    case 'rg8uint':
+    case 'rg8sint':
+    case 'r16uint':
+    case 'r16sint':
+    case 'r16float':
+      return 2;
+    case 'rgba8unorm':
+    case 'rgba8unorm-srgb':
+    case 'rgba8snorm':
+    case 'rgba8uint':
+    case 'rgba8sint':
+    case 'bgra8unorm':
+    case 'bgra8unorm-srgb':
+      return 4;
+    case 'rgba16uint':
+    case 'rgba16sint':
+    case 'rgba16float':
+      return 8;
+    case 'rgba32uint':
+    case 'rgba32sint':
+    case 'rgba32float':
+      return 16;
+    default:
+      return 4;
+  }
+}
+
+/**
+ * 将 value 向上对齐到 alignment 的最小倍数。
+ * WebGPU 要求 writeTexture 的 bytesPerRow 对齐到 256。
+ */
+export function alignTo(value: number, alignment: number): number {
+  return Math.ceil(value / alignment) * alignment;
+}
+
 class WebGpuRenderer implements Renderer {
   readonly backend: BackendType = 'webgpu';
   capabilities: RendererCapabilities;
@@ -31,6 +79,10 @@ class WebGpuRenderer implements Renderer {
   private pipelines = new Map<string, unknown>();
 
   private currentPass: unknown = null;
+
+  private currentCommandEncoder: unknown = null;
+  private pendingCommandBuffers: unknown[] = [];
+  private textureMetadata = new Map<string, { width: number; height: number; format: string }>();
 
   constructor() {
     this.capabilities = {
@@ -93,6 +145,7 @@ class WebGpuRenderer implements Renderer {
     this.buffers.clear();
     this.textures.clear();
     this.pipelines.clear();
+    this.textureMetadata.clear();
 
     (this.device as unknown as { destroy: () => void })?.destroy?.();
     this.device = null;
@@ -164,6 +217,7 @@ class WebGpuRenderer implements Renderer {
     });
 
     this.textures.set(id, texture);
+    this.textureMetadata.set(id, { width: desc.width, height: desc.height, format: desc.format });
     return { id, format: desc.format };
   }
 
@@ -173,12 +227,17 @@ class WebGpuRenderer implements Renderer {
     const texture = this.textures.get(handle.id);
     if (!texture) throw new Error(`Texture not found: ${handle.id}`);
 
+    const meta = this.textureMetadata.get(handle.id);
+    if (!meta) throw new Error(`Texture metadata not found: ${handle.id}`);
+
+    const bytesPerRow = alignTo(meta.width * bytesPerPixel(meta.format), 256);
+
     const queue = (this.device as unknown as { queue: unknown }).queue;
     (queue as unknown as { writeTexture(config: unknown, data: ArrayBufferView, layout: unknown, size: unknown): void }).writeTexture(
       { texture },
       data,
-      { bytesPerRow: handle.format === 'rgba8unorm' ? handle.id.length * 4 : 0 },
-      { width: (texture as unknown as { width: number }).width, height: (texture as unknown as { height: number }).height },
+      { bytesPerRow },
+      { width: meta.width, height: meta.height },
     );
   }
 
@@ -187,6 +246,7 @@ class WebGpuRenderer implements Renderer {
     if (texture) {
       (texture as unknown as { destroy: () => void }).destroy?.();
       this.textures.delete(handle.id);
+      this.textureMetadata.delete(handle.id);
     }
   }
 
@@ -256,6 +316,7 @@ class WebGpuRenderer implements Renderer {
     });
 
     const commandEncoder = (this.device as unknown as { createCommandEncoder(): unknown }).createCommandEncoder();
+    this.currentCommandEncoder = commandEncoder;
     this.currentPass = (commandEncoder as unknown as { beginRenderPass(config: unknown): unknown }).beginRenderPass({
       colorAttachments,
     });
@@ -294,12 +355,18 @@ class WebGpuRenderer implements Renderer {
       (this.currentPass as unknown as { end(): void }).end();
       this.currentPass = null;
     }
+    if (this.currentCommandEncoder) {
+      const cmdBuffer = (this.currentCommandEncoder as unknown as { finish(): unknown }).finish();
+      this.pendingCommandBuffers.push(cmdBuffer);
+      this.currentCommandEncoder = null;
+    }
   }
 
   submit(): void {
     if (!this.device) throw new Error('Renderer not initialized');
     const queue = (this.device as unknown as { queue: unknown }).queue;
-    (queue as unknown as { submit(commands: unknown[]): void }).submit([]);
+    (queue as unknown as { submit(commands: unknown[]): void }).submit(this.pendingCommandBuffers);
+    this.pendingCommandBuffers = [];
   }
 
   async readPixels(

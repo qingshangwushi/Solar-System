@@ -82,3 +82,4 @@ export function resetWasmCache(): void {
 export * from './time.js';
 export * from './reference-frame.js';
 export * from './ephemeris.js';
+export * from './events.js';

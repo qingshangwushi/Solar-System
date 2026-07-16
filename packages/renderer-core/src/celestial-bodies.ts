@@ -3,7 +3,7 @@
  */
 
 import type { Vec3d } from '@solar-system/schemas';
-import { RenderableNode, Material, Geometry, BufferHandle } from './index.js';
+import { RenderableNode, Material, Geometry, BufferHandle, Renderer } from './index.js';
 
 export type CelestialBodyType = 'sun' | 'earth' | 'moon';
 
@@ -345,10 +345,129 @@ export class SphereGeometry implements Geometry {
   vertexBuffer: BufferHandle;
   indexBuffer?: BufferHandle;
 
-  constructor(radius: number, segments: number = 32) {
-    this.vertexCount = segments * segments * 6;
-    this.indexCount = segments * segments * 6;
-    this.vertexBuffer = { id: `sphere-${radius}-${segments}`, usage: 'static' };
-    this.indexBuffer = { id: `sphere-idx-${radius}-${segments}`, usage: 'static' };
+  readonly radius: number;
+  readonly widthSegments: number;
+  readonly heightSegments: number;
+
+  readonly positions: Float32Array;
+  readonly normals: Float32Array;
+  readonly uvs: Float32Array;
+  readonly indices: Uint32Array;
+
+  constructor(
+    renderer: Renderer,
+    radius: number,
+    widthSegments: number = 32,
+    heightSegments: number = 16,
+  ) {
+    this.radius = radius;
+    this.widthSegments = widthSegments;
+    this.heightSegments = heightSegments;
+
+    const vertexCols = widthSegments + 1;
+    const vertexRows = heightSegments + 1;
+    const vertexCount = vertexCols * vertexRows;
+    const indexCount = widthSegments * heightSegments * 6;
+
+    this.vertexCount = vertexCount;
+    this.indexCount = indexCount;
+
+    const positions = new Float32Array(vertexCount * 3);
+    const normals = new Float32Array(vertexCount * 3);
+    const uvs = new Float32Array(vertexCount * 2);
+    const indices = new Uint32Array(indexCount);
+
+    const twoPi = Math.PI * 2;
+    const invRadius = radius !== 0 ? 1 / radius : 0;
+
+    for (let j = 0; j < vertexRows; j++) {
+      const phi = (j / heightSegments) * Math.PI;
+      const sinPhi = Math.sin(phi);
+      const cosPhi = Math.cos(phi);
+      const v = j / heightSegments;
+
+      for (let i = 0; i < vertexCols; i++) {
+        const theta = (i / widthSegments) * twoPi;
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
+
+        const x = radius * sinPhi * cosTheta;
+        const y = radius * cosPhi;
+        const z = radius * sinPhi * sinTheta;
+
+        const nx = x * invRadius;
+        const ny = y * invRadius;
+        const nz = z * invRadius;
+
+        const u = i / widthSegments;
+
+        const vertexIndex = j * vertexCols + i;
+        const p = vertexIndex * 3;
+        const uv = vertexIndex * 2;
+
+        positions[p] = x;
+        positions[p + 1] = y;
+        positions[p + 2] = z;
+        normals[p] = nx;
+        normals[p + 1] = ny;
+        normals[p + 2] = nz;
+        uvs[uv] = u;
+        uvs[uv + 1] = v;
+      }
+    }
+
+    let indexOffset = 0;
+    for (let j = 0; j < heightSegments; j++) {
+      for (let i = 0; i < widthSegments; i++) {
+        const a = j * vertexCols + i;
+        const b = j * vertexCols + i + 1;
+        const c = (j + 1) * vertexCols + i;
+        const d = (j + 1) * vertexCols + i + 1;
+
+        indices[indexOffset++] = a;
+        indices[indexOffset++] = c;
+        indices[indexOffset++] = b;
+        indices[indexOffset++] = b;
+        indices[indexOffset++] = c;
+        indices[indexOffset++] = d;
+      }
+    }
+
+    this.positions = positions;
+    this.normals = normals;
+    this.uvs = uvs;
+    this.indices = indices;
+
+    // Interleaved vertex buffer: position(3) + normal(3) + uv(2) = 8 floats per vertex.
+    const vertexArrayBuffer = new ArrayBuffer(vertexCount * 8 * 4);
+    const interleaved = new Float32Array(vertexArrayBuffer);
+    for (let k = 0; k < vertexCount; k++) {
+      const p = k * 3;
+      const uv = k * 2;
+      const dst = k * 8;
+      interleaved[dst] = positions[p] as number;
+      interleaved[dst + 1] = positions[p + 1] as number;
+      interleaved[dst + 2] = positions[p + 2] as number;
+      interleaved[dst + 3] = normals[p] as number;
+      interleaved[dst + 4] = normals[p + 1] as number;
+      interleaved[dst + 5] = normals[p + 2] as number;
+      interleaved[dst + 6] = uvs[uv] as number;
+      interleaved[dst + 7] = uvs[uv + 1] as number;
+    }
+
+    const indexArrayBuffer = new ArrayBuffer(indexCount * 4);
+    const indexView = new Uint32Array(indexArrayBuffer);
+    indexView.set(indices);
+
+    this.vertexBuffer = renderer.createBuffer({
+      size: vertexArrayBuffer.byteLength,
+      usage: 'static',
+      data: vertexArrayBuffer,
+    });
+    this.indexBuffer = renderer.createBuffer({
+      size: indexArrayBuffer.byteLength,
+      usage: 'static',
+      data: indexArrayBuffer,
+    });
   }
 }

@@ -287,4 +287,13 @@ export type { Star, Asteroid, Comet, Particle, ExtendedSpaceEnvironment, Stellar
 export { EventsServiceImpl, CruiseServiceImpl, PureViewingModeImpl, createEventsService, createCruiseService, createPureViewingMode, EVENT_TYPES, CRUISES } from './events-cruises.js';
 export type { EventType, CelestialEvent, CruiseWaypoint, Cruise, EventSearchOptions, EventsService, CruiseService, PureViewingMode } from './events-cruises.js';
 export { ResourceValidatorImpl, UpdateManagerImpl, TestRunnerImpl, OpsManagerImpl, createResourceValidator, createUpdateManager, createTestRunner, createOpsManager } from './productization.js';
+export { RenderLoop } from './render-loop.js';
+export type {
+  RenderLoopBodyId,
+  RenderLoopCamera,
+  RenderLoopBodyRenderer,
+  RenderLoopOptions,
+  RequestAnimationFrameLike,
+  CancelAnimationFrameLike,
+} from './render-loop.js';
 export type { ResourceType, ValidationStatus, ResourceValidationResult, ValidationReport, ResourceValidator, UpdateInfo, UpdateStatus, UpdateManager, TestResult, TestSuiteResult, TestReport, TestEnvironment, TestRunner, MaintenanceTask, OperationalStats, HealthCheckResult, OpsManager } from './productization.js';

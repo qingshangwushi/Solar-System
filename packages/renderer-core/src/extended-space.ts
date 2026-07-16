@@ -127,10 +127,16 @@ export const OORT_CLOUD_OUTER_RADIUS = 50000;
 
 export const SOLAR_WIND_SPEED = 400;
 
-export class StarData {
+export class StarData implements StellarBackground {
   private stars: Star[] = [];
-  
+  private starDensity: number;
+  private magnitudeRange: { min: number; max: number };
+  private cameraPosition: Vec3d = { x: 0, y: 0, z: 0 };
+  private visibleStarsBuffer: Star[] = [];
+
   constructor(count: number = 10000) {
+    this.starDensity = count;
+    this.magnitudeRange = { min: 1, max: 6 };
     this.generateStars(count);
   }
   
@@ -145,7 +151,7 @@ export class StarData {
       const y = distance * Math.sin(phi) * Math.sin(theta);
       const z = distance * Math.cos(phi);
       
-      const magnitude = 1 + Math.random() * 5;
+      const magnitude = this.magnitudeRange.min + Math.random() * (this.magnitudeRange.max - this.magnitudeRange.min);
       const colorTemp = 3000 + Math.random() * 7000;
       const color = this.temperatureToRGB(colorTemp);
       
@@ -199,6 +205,40 @@ export class StarData {
     }
     
     return visible;
+  }
+
+  /**
+   * 返回 render() 最近一次预计算的可见星集合（内部缓冲）。
+   * 当没有挂载渲染器时，render() 不会绘制，而是把结果存入该缓冲供后续消费。
+   */
+  getVisibleStarsBuffer(): Star[] {
+    return this.visibleStarsBuffer;
+  }
+
+  update(cameraPosition: Vec3d): void {
+    this.cameraPosition = { ...cameraPosition };
+  }
+
+  render(): void {
+    // Safe no-op stub: no renderer is attached, so nothing is drawn.
+    // The existing getVisibleStars logic is exercised into an internal
+    // buffer that a future renderer could consume.
+    this.visibleStarsBuffer = this.getVisibleStars(this.cameraPosition, 90);
+  }
+
+  dispose(): void {
+    this.stars = [];
+    this.visibleStarsBuffer = [];
+  }
+
+  setStarDensity(density: number): void {
+    this.starDensity = density;
+    this.generateStars(density);
+  }
+
+  setMagnitudeRange(min: number, max: number): void {
+    this.magnitudeRange = { min, max };
+    this.generateStars(this.starDensity);
   }
 }
 
@@ -541,7 +581,7 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
   private aurorasEnabled = true;
   
   constructor() {
-    this.stellarBackground = {} as StellarBackground;
+    this.stellarBackground = new StarData();
     this.asteroidBelt = new AsteroidBeltImpl();
     this.kuiperBelt = new KuiperBeltImpl();
     this.oortCloud = new OortCloudImpl();
@@ -562,6 +602,9 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
     }
     if (this.solarWindEnabled) {
       this.solarWind.update(time, sunPosition);
+    }
+    if (this.stellarBackgroundEnabled) {
+      this.stellarBackground.update({ x: 0, y: 0, z: 0 });
     }
   }
   
