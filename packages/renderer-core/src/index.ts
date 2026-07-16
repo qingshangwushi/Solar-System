@@ -11,6 +11,7 @@
  */
 
 import type { Vec3d, Quat64 } from '@solar-system/schemas';
+import type { CameraType } from './camera.js';
 
 export type BackendType = 'webgpu' | 'webgl2';
 

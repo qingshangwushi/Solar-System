@@ -348,7 +348,7 @@ class WebGpuRendererFactory implements RendererFactory {
   }
 
   isSupported(): boolean {
-    return 'gpu' in navigator;
+    return typeof navigator !== 'undefined' && 'gpu' in navigator;
   }
 }
 

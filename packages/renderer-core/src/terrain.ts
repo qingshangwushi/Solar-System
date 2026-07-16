@@ -118,7 +118,7 @@ export class TerrainTileImpl implements TerrainTile {
   readonly bounds: TileBounds;
   readonly level: TileLevel;
   readonly parentId?: TileId;
-  readonly childrenIds: TileId[] = [];
+  childrenIds: TileId[] = [];
   readonly vertexBuffer?: string;
   readonly indexBuffer?: string;
   readonly textureBuffer?: string;
@@ -426,13 +426,13 @@ export class AtmosphereParamsImpl implements AtmosphereParams {
 }
 
 export class AtmosphereRendererImpl implements AtmosphereRenderer {
-  private params: AtmosphereParams;
+  private atmoParams: AtmosphereParams;
   private timeValue: number = 0;
   private sunDirectionValue: Vec3d = { x: 1, y: 0, z: 0 };
   private cameraPositionValue: Vec3d = { x: 0, y: 0, z: 0 };
 
   constructor(params?: Partial<AtmosphereParams>) {
-    this.params = new AtmosphereParamsImpl(params);
+    this.atmoParams = new AtmosphereParamsImpl(params);
   }
 
   update(time: number, sunDirection: Vec3d, cameraPosition: Vec3d): void {
@@ -441,9 +441,14 @@ export class AtmosphereRendererImpl implements AtmosphereRenderer {
     this.cameraPositionValue = { ...cameraPosition };
   }
 
-  render(): void {}
+  render(): void {
+    void this.atmoParams;
+    void this.timeValue;
+    void this.sunDirectionValue;
+    void this.cameraPositionValue;
+  }
 
   setParams(params: AtmosphereParams): void {
-    this.params = { ...params };
+    this.atmoParams = { ...params };
   }
 }
