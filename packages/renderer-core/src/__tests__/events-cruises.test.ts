@@ -74,6 +74,7 @@ class MockRenderer implements Renderer {
     this.pipelinesCreated += 1;
     return { id: `pipeline-${this.pipelinesCreated}` };
   }
+  destroyPipeline(): void {}
   beginPass(): void {
     this.beginPassCount += 1;
   }

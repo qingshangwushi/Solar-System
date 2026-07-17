@@ -46,7 +46,7 @@ describe('terrain-engine re-export from renderer-core (E-39)', () => {
   });
 
   it('re-exported TerrainLODControllerImpl should be constructible', () => {
-    const controller = new terrainEngine.TerrainLODControllerImpl(5, 0);
+    const controller = new terrainEngine.TerrainLODControllerImpl({ maxLevel: 5, minLevel: 0 });
     expect(controller).toBeInstanceOf(rendererCore.TerrainLODControllerImpl);
     expect(controller.maxLevel).toBe(5);
     expect(controller.minLevel).toBe(0);
