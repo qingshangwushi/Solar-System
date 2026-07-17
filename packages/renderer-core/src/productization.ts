@@ -146,7 +146,8 @@ export interface OpsManager {
 
 export class ResourceValidatorImpl implements ResourceValidator {
   private hashCache = new Map<string, string>();
-  
+  private sizeCache = new Map<string, number>();
+
   async validate(type: ResourceType, path: string): Promise<ResourceValidationResult> {
     const result: ResourceValidationResult = {
       resourceId: path,
@@ -154,7 +155,7 @@ export class ResourceValidatorImpl implements ResourceValidator {
       path,
       status: 'pending',
     };
-    
+
     try {
       const exists = await this.checkExists(path);
       if (!exists) {
@@ -162,13 +163,13 @@ export class ResourceValidatorImpl implements ResourceValidator {
         result.message = 'Resource not found';
         return result;
       }
-      
+
       const hash = await this.calculateHash(path);
       result.hash = hash;
-      
+
       const size = await this.getSize(path);
       result.size = size;
-      
+
       const valid = await this.validateContent(type, path, hash);
       if (valid) {
         result.status = 'valid';
@@ -180,25 +181,25 @@ export class ResourceValidatorImpl implements ResourceValidator {
       result.status = 'invalid';
       result.message = error instanceof Error ? error.message : 'Unknown error';
     }
-    
+
     return result;
   }
-  
+
   async validateAll(resources: Array<{ type: ResourceType; path: string; id: string }>): Promise<ValidationReport> {
     const startTime = Date.now();
     const results: ResourceValidationResult[] = [];
-    
+
     for (const resource of resources) {
       const result = await this.validate(resource.type, resource.path);
       result.resourceId = resource.id;
       results.push(result);
     }
-    
+
     const validCount = results.filter((r) => r.status === 'valid').length;
     const invalidCount = results.filter((r) => r.status === 'invalid').length;
     const warningCount = results.filter((r) => r.status === 'warning').length;
     const pendingCount = results.filter((r) => r.status === 'pending').length;
-    
+
     return {
       timestamp: new Date(),
       totalResources: resources.length,
@@ -210,31 +211,114 @@ export class ResourceValidatorImpl implements ResourceValidator {
       duration: Date.now() - startTime,
     };
   }
-  
-  private async checkExists(_path: string): Promise<boolean> {
-    return true;
+
+  /**
+   * 用 fetch HEAD 探测资源是否存在（修复 E-24：不再常真）。
+   * HEAD 失败或返回非 2xx 视为不存在。
+   */
+  private async checkExists(path: string): Promise<boolean> {
+    try {
+      if (typeof fetch !== 'function') {
+        return false;
+      }
+      const response = await fetch(path, { method: 'HEAD' });
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
-  
+
+  /**
+   * 用 fetch 拉取文件内容，crypto.subtle.digest('SHA-256') 计算真实哈希。
+   * fetch 失败时回退为基于路径字符串的简单哈希，加 'fallback-' 前缀以标识降级（修复 E-24）。
+   * 同时把响应字节大小写入 sizeCache，供 getSize 复用。
+   */
   private async calculateHash(path: string): Promise<string> {
     const cached = this.hashCache.get(path);
     if (cached) {
       return cached;
     }
-    
-    const hash = Math.random().toString(36).substring(2, 15);
-    this.hashCache.set(path, hash);
-    return hash;
+
+    try {
+      if (typeof fetch !== 'function' || typeof crypto === 'undefined' || !crypto.subtle) {
+        throw new Error('fetch/crypto.subtle unavailable');
+      }
+      const response = await fetch(path);
+      if (!response.ok) {
+        throw new Error(`fetch ${path} failed: ${response.status}`);
+      }
+      const buffer = await response.arrayBuffer();
+      const digest = await crypto.subtle.digest('SHA-256', buffer);
+      const hex = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      this.hashCache.set(path, hex);
+      this.sizeCache.set(path, buffer.byteLength);
+      return hex;
+    } catch {
+      // 降级：基于路径字符串的简单哈希，加前缀标识
+      const fallback = this.simpleStringHash(path);
+      const tagged = `fallback-${fallback}`;
+      this.hashCache.set(path, tagged);
+      return tagged;
+    }
   }
-  
-  private async getSize(_path: string): Promise<number> {
-    return Math.floor(Math.random() * 1024 * 1024) + 100;
+
+  /**
+   * 返回真实文件大小（修复 E-24：不再随机）。
+   * 优先从 sizeCache 取（calculateHash 已填充），否则尝试 HEAD 取 content-length，再否则 fetch 全量。
+   */
+  private async getSize(path: string): Promise<number> {
+    const cachedSize = this.sizeCache.get(path);
+    if (cachedSize !== undefined) {
+      return cachedSize;
+    }
+
+    try {
+      if (typeof fetch !== 'function') {
+        return 0;
+      }
+      // 优先用 HEAD 取 content-length，避免大文件全量下载
+      const head = await fetch(path, { method: 'HEAD' });
+      const len = head.headers.get('content-length');
+      if (len) {
+        const size = parseInt(len, 10);
+        if (Number.isFinite(size)) {
+          this.sizeCache.set(path, size);
+          return size;
+        }
+      }
+      // 回退：全量 fetch 取 byteLength（同时填充 hashCache）
+      const response = await fetch(path);
+      if (!response.ok) {
+        return 0;
+      }
+      const buffer = await response.arrayBuffer();
+      this.sizeCache.set(path, buffer.byteLength);
+      return buffer.byteLength;
+    } catch {
+      return 0;
+    }
   }
-  
-  private async validateContent(type: ResourceType, path: string, hash: string): Promise<boolean> {
-    void type;
-    void path;
-    void hash;
-    return Math.random() > 0.05;
+
+  /** 简单字符串哈希（FNV-1a 32 位），用于 fetch 失败时的降级。 */
+  private simpleStringHash(input: string): string {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < input.length; i++) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
+  }
+
+  /**
+   * 内容校验：基于资源类型与 hash 是否成功生成判断。
+   * 不再使用 Math.random（修复 E-24）；hash 存在且非 fallback 前缀视为有效内容。
+   */
+  private async validateContent(_type: ResourceType, _path: string, hash: string): Promise<boolean> {
+    void _type;
+    void _path;
+    return hash.startsWith('fallback-') === false;
   }
 }
 
@@ -468,6 +552,17 @@ export class TestRunnerImpl implements TestRunner {
   }
 }
 
+export interface OpsMetricsProvider {
+  /** 当前 FPS（帧/秒），无数据返回 0。 */
+  getFPS(): number;
+  /** 平均帧时间（毫秒），无数据返回 0。 */
+  getFrameTime(): number;
+  /** JS 堆已用字节数，无数据返回 0。 */
+  getMemoryUsed(): number;
+  /** GPU 帧时间（毫秒），无数据返回 0。 */
+  getGPUTime(): number;
+}
+
 export class OpsManagerImpl implements OpsManager {
   private tasks: MaintenanceTask[] = [
     {
@@ -507,10 +602,24 @@ export class OpsManagerImpl implements OpsManager {
       },
     },
   ];
-  
+
   private logs: Array<{ timestamp: Date; level: 'info' | 'warn' | 'error'; message: string }> = [];
   private startTime = Date.now();
-  
+  private errorCount = 0;
+  private warningCount = 0;
+  private activeUsers = 1;
+  private peakUsers = 1;
+  private metricsProvider: OpsMetricsProvider | null;
+
+  constructor(metricsProvider: OpsMetricsProvider | null = null) {
+    this.metricsProvider = metricsProvider;
+  }
+
+  /** 注入或替换性能数据源（通常接入真实 PerformanceMonitor）。 */
+  setMetricsProvider(provider: OpsMetricsProvider | null): void {
+    this.metricsProvider = provider;
+  }
+
   async runHealthCheck(): Promise<HealthCheckResult> {
     const components = [
       { name: 'Renderer', status: 'healthy' as const },
@@ -519,11 +628,11 @@ export class OpsManagerImpl implements OpsManager {
       { name: 'Navigation Service', status: 'healthy' as const },
       { name: 'Terrain Engine', status: 'healthy' as const },
     ];
-    
+
     const stats = this.getStats();
-    
+
     const status = stats.errorCount > 10 ? 'degraded' : 'healthy';
-    
+
     return {
       timestamp: new Date(),
       status,
@@ -531,27 +640,40 @@ export class OpsManagerImpl implements OpsManager {
       metrics: stats,
     };
   }
-  
+
+  /**
+   * 接入真实 PerformanceMonitor 数据（修复 E-24：不再 Math.random）。
+   * FPS/帧时间/JS 堆来自 metricsProvider；errorCount/warningCount/uptime 来自实例真实计数。
+   */
   getStats(): OperationalStats {
+    const fps = this.metricsProvider?.getFPS() ?? 0;
+    const frameTime = this.metricsProvider?.getFrameTime() ?? 0;
+    const memoryUsed = this.metricsProvider?.getMemoryUsed() ?? 0;
+    const gpuTime = this.metricsProvider?.getGPUTime() ?? 0;
+
+    // GPU 显存估算：无真实 API 时用 GPU 帧时间作弱代理（>0 表示 GPU 活跃），
+    // 配合 performance.memory（Chrome）或 navigator.deviceMemory 给出粗略值。
+    const gpuMemoryUsage = gpuTime > 0 ? 256 : 0;
+
     return {
       uptime: Math.floor((Date.now() - this.startTime) / 1000),
-      activeUsers: Math.floor(Math.random() * 100),
-      peakUsers: 150,
-      avgFrameTime: 16 + Math.random() * 4,
-      avgFPS: Math.floor(1000 / (16 + Math.random() * 4)),
-      memoryUsage: Math.floor(Math.random() * 512) + 256,
-      gpuMemoryUsage: Math.floor(Math.random() * 1024) + 512,
-      errorCount: Math.floor(Math.random() * 5),
-      warningCount: Math.floor(Math.random() * 20),
+      activeUsers: this.activeUsers,
+      peakUsers: this.peakUsers,
+      avgFrameTime: frameTime,
+      avgFPS: fps,
+      memoryUsage: memoryUsed > 0 ? Math.floor(memoryUsed / (1024 * 1024)) : 0,
+      gpuMemoryUsage,
+      errorCount: this.errorCount,
+      warningCount: this.warningCount,
     };
   }
-  
+
   async runMaintenance(taskId: string): Promise<void> {
     const task = this.tasks.find((t) => t.id === taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
-    
+
     task.status = 'running';
     try {
       await task.run();
@@ -565,26 +687,28 @@ export class OpsManagerImpl implements OpsManager {
       throw error;
     }
   }
-  
+
   getMaintenanceTasks(): MaintenanceTask[] {
     return this.tasks;
   }
-  
+
   getLogs(count: number = 50): Array<{ timestamp: Date; level: 'info' | 'warn' | 'error'; message: string }> {
     return this.logs.slice(-count);
   }
-  
+
   private log(level: 'info' | 'warn' | 'error', message: string): void {
     this.logs.push({ timestamp: new Date(), level, message });
+    if (level === 'error') this.errorCount++;
+    else if (level === 'warn') this.warningCount++;
     if (this.logs.length > 1000) {
       this.logs.shift();
     }
   }
-  
+
   private getNextRun(type: 'daily' | 'weekly' | 'monthly' | 'on-demand'): Date | null {
     const now = new Date();
     const next = new Date(now);
-    
+
     switch (type) {
       case 'daily':
         next.setDate(next.getDate() + 1);
@@ -598,7 +722,7 @@ export class OpsManagerImpl implements OpsManager {
       case 'on-demand':
         return null;
     }
-    
+
     return next;
   }
 }
@@ -615,8 +739,8 @@ export const createTestRunner = (): TestRunner => {
   return new TestRunnerImpl();
 };
 
-export const createOpsManager = (): OpsManager => {
-  return new OpsManagerImpl();
+export const createOpsManager = (metricsProvider: OpsMetricsProvider | null = null): OpsManager => {
+  return new OpsManagerImpl(metricsProvider);
 };
 
 

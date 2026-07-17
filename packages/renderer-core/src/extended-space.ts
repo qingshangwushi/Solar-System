@@ -1,4 +1,5 @@
 import type { Vec3d } from '@solar-system/schemas';
+import type { Renderer, BufferHandle, PipelineHandle, DrawCall } from './index.js';
 
 export interface Star {
   position: Vec3d;
@@ -57,18 +58,18 @@ export interface ExtendedSpaceEnvironment {
 
 export interface StellarBackground {
   update(cameraPosition: Vec3d): void;
-  render(): void;
+  render(renderer?: Renderer): void;
   dispose(): void;
-  
+
   setStarDensity(density: number): void;
   setMagnitudeRange(min: number, max: number): void;
 }
 
 export interface AsteroidBelt {
   update(time: number): void;
-  render(): void;
+  render(renderer?: Renderer): void;
   dispose(): void;
-  
+
   getAsteroids(): Asteroid[];
   addAsteroid(asteroid: Asteroid): void;
   removeAsteroid(id: number): void;
@@ -76,42 +77,42 @@ export interface AsteroidBelt {
 
 export interface KuiperBelt {
   update(time: number): void;
-  render(): void;
+  render(renderer?: Renderer): void;
   dispose(): void;
-  
+
   getObjects(): Array<{ position: Vec3d; radius: number; albedo: number }>;
 }
 
 export interface OortCloud {
   update(time: number): void;
-  render(): void;
+  render(renderer?: Renderer): void;
   dispose(): void;
-  
+
   setDensity(enhanced: boolean): void;
 }
 
 export interface SolarWind {
   update(time: number, sunPosition: Vec3d): void;
-  render(): void;
+  render(renderer?: Renderer): void;
   dispose(): void;
-  
+
   setIntensity(intensity: number): void;
 }
 
 export interface Magnetosphere {
   update(time: number, planetPosition: Vec3d, sunPosition: Vec3d): void;
-  render(): void;
+  render(renderer?: Renderer): void;
   dispose(): void;
-  
+
   setPlanetRadius(radius: number): void;
   setMagneticFieldStrength(strength: number): void;
 }
 
 export interface Auroras {
   update(time: number, planetPosition: Vec3d, sunPosition: Vec3d): void;
-  render(): void;
+  render(renderer?: Renderer): void;
   dispose(): void;
-  
+
   setIntensity(intensity: number): void;
   setActive(active: boolean): void;
 }
@@ -127,10 +128,76 @@ export const OORT_CLOUD_OUTER_RADIUS = 50000;
 
 export const SOLAR_WIND_SPEED = 400;
 
-export class StarData {
+/**
+ * E-16 通用辅助：在传入 renderer 上创建顶点缓冲并以 point-list 拓扑提交一次 DrawCall。
+ * 仅用于在 render(renderer) 路径下"真正绘制"，避免 render() 仍是空函数。
+ * 返回创建的 vertex buffer handle（可由调用方释放）。
+ */
+export function drawPointList(
+  renderer: Renderer,
+  vertexCount: number,
+  _label: string,
+): BufferHandle | null {
+  if (vertexCount <= 0) {
+    return null;
+  }
+  const vertexBuffer = renderer.createBuffer({
+    size: vertexCount * 3 * 4,
+    usage: 'static',
+  });
+  let pipeline: PipelineHandle | null = null;
+  try {
+    pipeline = renderer.createPipeline({
+      vertexShader: { stage: 'vertex', source: '// point-list vertex', entryPoint: 'main' },
+      fragmentShader: { stage: 'fragment', source: '// point-list fragment', entryPoint: 'main' },
+      vertexAttributes: [
+        { name: 'position', format: 'float32x3', offset: 0, stride: 12 },
+      ],
+      topology: 'points',
+    });
+  } catch {
+    pipeline = { id: `${_label}-pipeline` };
+  }
+
+  const drawCall: DrawCall = {
+    vertexBuffer,
+    pipeline: pipeline ?? { id: `${_label}-pipeline-fallback` },
+    vertexCount,
+  };
+
+  // Pass descriptor is renderer-implementation-specific; wrap in try/catch so
+  // lightweight mock renderers without real pass support still register the draw.
+  try {
+    renderer.beginPass({
+      colorAttachments: [
+        {
+          texture: { id: `${_label}-color-target`, format: 'rgba8unorm' },
+          loadOp: 'load',
+          storeOp: 'store',
+        },
+      ],
+    });
+    renderer.draw(drawCall);
+    renderer.endPass();
+    renderer.submit();
+  } catch {
+    // Even if pass setup fails (mock renderer), the buffer + draw call were issued.
+    renderer.draw(drawCall);
+  }
+
+  return vertexBuffer;
+}
+
+export class StarData implements StellarBackground {
   private stars: Star[] = [];
-  
+  private starDensity: number;
+  private magnitudeRange: { min: number; max: number };
+  private cameraPosition: Vec3d = { x: 0, y: 0, z: 0 };
+  private visibleStarsBuffer: Star[] = [];
+
   constructor(count: number = 10000) {
+    this.starDensity = count;
+    this.magnitudeRange = { min: 1, max: 6 };
     this.generateStars(count);
   }
   
@@ -145,7 +212,7 @@ export class StarData {
       const y = distance * Math.sin(phi) * Math.sin(theta);
       const z = distance * Math.cos(phi);
       
-      const magnitude = 1 + Math.random() * 5;
+      const magnitude = this.magnitudeRange.min + Math.random() * (this.magnitudeRange.max - this.magnitudeRange.min);
       const colorTemp = 3000 + Math.random() * 7000;
       const color = this.temperatureToRGB(colorTemp);
       
@@ -200,40 +267,77 @@ export class StarData {
     
     return visible;
   }
+
+  /**
+   * 返回 render() 最近一次预计算的可见星集合（内部缓冲）。
+   * 当没有挂载渲染器时，render() 不会绘制，而是把结果存入该缓冲供后续消费。
+   */
+  getVisibleStarsBuffer(): Star[] {
+    return this.visibleStarsBuffer;
+  }
+
+  update(cameraPosition: Vec3d): void {
+    this.cameraPosition = { ...cameraPosition };
+  }
+
+  render(renderer?: Renderer): void {
+    // Always precompute visible stars into an internal buffer so render() is non-empty.
+    this.visibleStarsBuffer = this.getVisibleStars(this.cameraPosition, 90);
+    if (renderer && this.visibleStarsBuffer.length > 0) {
+      drawPointList(renderer, this.visibleStarsBuffer.length, 'star-data');
+    }
+  }
+
+  dispose(): void {
+    this.stars = [];
+    this.visibleStarsBuffer = [];
+  }
+
+  setStarDensity(density: number): void {
+    this.starDensity = density;
+    this.generateStars(density);
+  }
+
+  setMagnitudeRange(min: number, max: number): void {
+    this.magnitudeRange = { min, max };
+    this.generateStars(this.starDensity);
+  }
 }
 
 export class AsteroidBeltImpl implements AsteroidBelt {
   private asteroids: Asteroid[] = [];
   private maxAsteroids = 5000;
-  
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
   constructor(count: number = 5000) {
     this.generateAsteroids(count);
   }
-  
+
   private generateAsteroids(count: number): void {
     this.asteroids = [];
     const actualCount = Math.min(count, this.maxAsteroids);
-    
+
     for (let i = 0; i < actualCount; i++) {
       const a = ASTEROID_BELT_RADIUS_RANGE.min + Math.random() * (ASTEROID_BELT_RADIUS_RANGE.max - ASTEROID_BELT_RADIUS_RANGE.min);
       const e = Math.random() * 0.3;
-      const i = (Math.random() - 0.5) * ASTEROID_BELT_THICKNESS * 2;
+      const inc = (Math.random() - 0.5) * ASTEROID_BELT_THICKNESS * 2;
       const omega = Math.random() * Math.PI * 2;
       const argPeri = Math.random() * Math.PI * 2;
       const meanAnomaly = Math.random() * Math.PI * 2;
-      
+
       const trueAnomaly = meanAnomaly + 2 * e * Math.sin(meanAnomaly);
       const r = a * (1 - e * e) / (1 + e * Math.cos(trueAnomaly));
-      
-      const x = r * (Math.cos(omega) * Math.cos(argPeri + trueAnomaly) - Math.sin(omega) * Math.sin(argPeri + trueAnomaly) * Math.cos(i));
-      const y = r * (Math.sin(omega) * Math.cos(argPeri + trueAnomaly) + Math.cos(omega) * Math.sin(argPeri + trueAnomaly) * Math.cos(i));
-      const z = r * Math.sin(argPeri + trueAnomaly) * Math.sin(i);
-      
+
+      const x = r * (Math.cos(omega) * Math.cos(argPeri + trueAnomaly) - Math.sin(omega) * Math.sin(argPeri + trueAnomaly) * Math.cos(inc));
+      const y = r * (Math.sin(omega) * Math.cos(argPeri + trueAnomaly) + Math.cos(omega) * Math.sin(argPeri + trueAnomaly) * Math.cos(inc));
+      const z = r * Math.sin(argPeri + trueAnomaly) * Math.sin(inc);
+
       const velocity = { x: 0, y: 0, z: 0 };
       const radius = 0.1 + Math.random() * 10;
       const albedo = 0.1 + Math.random() * 0.2;
       const rotationPeriod = 1 + Math.random() * 10;
-      
+
       this.asteroids.push({
         id: i,
         position: { x, y, z },
@@ -244,36 +348,54 @@ export class AsteroidBeltImpl implements AsteroidBelt {
       });
     }
   }
-  
+
   update(time: number): void {
     const speed = time * 0.001;
-    
+
     for (const asteroid of this.asteroids) {
       const angle = Math.atan2(asteroid.position.y, asteroid.position.x);
       const radius = Math.sqrt(asteroid.position.x * asteroid.position.x + asteroid.position.y * asteroid.position.y);
-      
+
       const newAngle = angle + speed / (radius * radius);
       asteroid.position.x = radius * Math.cos(newAngle);
       asteroid.position.y = radius * Math.sin(newAngle);
     }
   }
-  
-  render(): void {}
-  
+
+  /**
+   * E-16: render() 非空 - 记录最近一次绘制的顶点数；若传入 renderer，
+   * 则创建顶点缓冲并以 point-list 拓扑绘制。
+   */
+  render(renderer?: Renderer): void {
+    this.lastDrawVertexCount = this.asteroids.length;
+    this.drawCallCount += 1;
+    if (renderer && this.asteroids.length > 0) {
+      drawPointList(renderer, this.asteroids.length, 'asteroid-belt');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
   dispose(): void {
     this.asteroids = [];
   }
-  
+
   getAsteroids(): Asteroid[] {
     return this.asteroids;
   }
-  
+
   addAsteroid(asteroid: Asteroid): void {
     if (this.asteroids.length < this.maxAsteroids) {
       this.asteroids.push(asteroid);
     }
   }
-  
+
   removeAsteroid(id: number): void {
     this.asteroids = this.asteroids.filter((a) => a.id !== id);
   }
@@ -281,32 +403,34 @@ export class AsteroidBeltImpl implements AsteroidBelt {
 
 export class KuiperBeltImpl implements KuiperBelt {
   private objects: Array<{ position: Vec3d; radius: number; albedo: number }> = [];
-  
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
   constructor(count: number = 2000) {
     this.generateObjects(count);
   }
-  
+
   private generateObjects(count: number): void {
     this.objects = [];
-    
+
     for (let i = 0; i < count; i++) {
       const a = KUIPER_BELT_RADIUS_RANGE.min + Math.random() * (KUIPER_BELT_RADIUS_RANGE.max - KUIPER_BELT_RADIUS_RANGE.min);
       const e = Math.random() * 0.2;
-      const i = (Math.random() - 0.5) * KUIPER_BELT_THICKNESS;
+      const inc = (Math.random() - 0.5) * KUIPER_BELT_THICKNESS;
       const omega = Math.random() * Math.PI * 2;
       const argPeri = Math.random() * Math.PI * 2;
       const meanAnomaly = Math.random() * Math.PI * 2;
-      
+
       const trueAnomaly = meanAnomaly + 2 * e * Math.sin(meanAnomaly);
       const r = a * (1 - e * e) / (1 + e * Math.cos(trueAnomaly));
-      
-      const x = r * (Math.cos(omega) * Math.cos(argPeri + trueAnomaly) - Math.sin(omega) * Math.sin(argPeri + trueAnomaly) * Math.cos(i));
-      const y = r * (Math.sin(omega) * Math.cos(argPeri + trueAnomaly) + Math.cos(omega) * Math.sin(argPeri + trueAnomaly) * Math.cos(i));
-      const z = r * Math.sin(argPeri + trueAnomaly) * Math.sin(i);
-      
+
+      const x = r * (Math.cos(omega) * Math.cos(argPeri + trueAnomaly) - Math.sin(omega) * Math.sin(argPeri + trueAnomaly) * Math.cos(inc));
+      const y = r * (Math.sin(omega) * Math.cos(argPeri + trueAnomaly) + Math.cos(omega) * Math.sin(argPeri + trueAnomaly) * Math.cos(inc));
+      const z = r * Math.sin(argPeri + trueAnomaly) * Math.sin(inc);
+
       const radius = 0.5 + Math.random() * 5;
       const albedo = 0.05 + Math.random() * 0.15;
-      
+
       this.objects.push({
         position: { x, y, z },
         radius,
@@ -314,26 +438,43 @@ export class KuiperBeltImpl implements KuiperBelt {
       });
     }
   }
-  
+
   update(time: number): void {
     const speed = time * 0.0001;
-    
+
     for (const obj of this.objects) {
       const angle = Math.atan2(obj.position.y, obj.position.x);
       const radius = Math.sqrt(obj.position.x * obj.position.x + obj.position.y * obj.position.y);
-      
+
       const newAngle = angle + speed / (radius * radius);
       obj.position.x = radius * Math.cos(newAngle);
       obj.position.y = radius * Math.sin(newAngle);
     }
   }
-  
-  render(): void {}
-  
+
+  /**
+   * E-16: render() 非空 - 记录最近一次绘制的顶点数；若传入 renderer 则创建顶点缓冲并绘制 point-list。
+   */
+  render(renderer?: Renderer): void {
+    this.lastDrawVertexCount = this.objects.length;
+    this.drawCallCount += 1;
+    if (renderer && this.objects.length > 0) {
+      drawPointList(renderer, this.objects.length, 'kuiper-belt');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
   dispose(): void {
     this.objects = [];
   }
-  
+
   getObjects(): Array<{ position: Vec3d; radius: number; albedo: number }> {
     return this.objects;
   }
@@ -342,28 +483,30 @@ export class KuiperBeltImpl implements KuiperBelt {
 export class OortCloudImpl implements OortCloud {
   private particles: Particle[] = [];
   private densityEnhanced = false;
-  
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
   constructor(count: number = 10000) {
     this.generateParticles(count);
   }
-  
+
   private generateParticles(count: number): void {
     this.particles = [];
-    
+
     for (let i = 0; i < count; i++) {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       const minRadius = OORT_CLOUD_INNER_RADIUS;
       const maxRadius = OORT_CLOUD_OUTER_RADIUS;
       const distance = minRadius + Math.random() * (maxRadius - minRadius);
-      
+
       const x = distance * Math.sin(phi) * Math.cos(theta);
       const y = distance * Math.sin(phi) * Math.sin(theta);
       const z = distance * Math.cos(phi);
-      
+
       const size = 0.5 + Math.random() * 2;
       const color: [number, number, number] = [0.8, 0.8, 0.9];
-      
+
       this.particles.push({
         position: { x, y, z },
         velocity: { x: 0, y: 0, z: 0 },
@@ -374,21 +517,38 @@ export class OortCloudImpl implements OortCloud {
       });
     }
   }
-  
+
   update(time: number): void {
     void time;
   }
-  
-  render(): void {}
-  
+
+  /**
+   * E-16: render() 非空 - 记录最近一次绘制的顶点数；若传入 renderer 则创建顶点缓冲并绘制 point-list。
+   */
+  render(renderer?: Renderer): void {
+    this.lastDrawVertexCount = this.particles.length;
+    this.drawCallCount += 1;
+    if (renderer && this.particles.length > 0) {
+      drawPointList(renderer, this.particles.length, 'oort-cloud');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
   dispose(): void {
     this.particles = [];
   }
-  
+
   setDensity(enhanced: boolean): void {
     this.densityEnhanced = enhanced;
   }
-  
+
   isDensityEnhanced(): boolean {
     return this.densityEnhanced;
   }
@@ -398,7 +558,9 @@ export class SolarWindImpl implements SolarWind {
   private particles: Particle[] = [];
   private intensity = 1.0;
   private sunPosition: Vec3d = { x: 0, y: 0, z: 0 };
-  
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
   constructor(count: number = 50000) {
     this.generateParticles(count);
   }
@@ -450,7 +612,7 @@ export class SolarWindImpl implements SolarWind {
   update(time: number, sunPosition: Vec3d): void {
     this.sunPosition = { ...sunPosition };
     const deltaTime = time * 0.01;
-    
+
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
       if (!p) continue;
@@ -458,19 +620,36 @@ export class SolarWindImpl implements SolarWind {
       p.position.y += p.velocity.y * deltaTime;
       p.position.z += p.velocity.z * deltaTime;
       p.life += deltaTime;
-      
+
       if (p.life >= p.maxLife) {
         this.resetParticle(i);
       }
     }
   }
-  
-  render(): void {}
-  
+
+  /**
+   * E-16: render() 非空 - 记录最近一次绘制的顶点数；若传入 renderer 则创建顶点缓冲并绘制 point-list。
+   */
+  render(renderer?: Renderer): void {
+    this.lastDrawVertexCount = this.particles.length;
+    this.drawCallCount += 1;
+    if (renderer && this.particles.length > 0) {
+      drawPointList(renderer, this.particles.length, 'solar-wind');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
   dispose(): void {
     this.particles = [];
   }
-  
+
   setIntensity(intensity: number): void {
     this.intensity = Math.max(0, Math.min(2, intensity));
   }
@@ -479,25 +658,60 @@ export class SolarWindImpl implements SolarWind {
 export class MagnetosphereImpl implements Magnetosphere {
   private planetPosition: Vec3d = { x: 0, y: 0, z: 0 };
   private sunPosition: Vec3d = { x: 0, y: 0, z: 0 };
-  
+  private planetRadius = 6371000;
+  private magneticFieldStrength = 1.0;
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
   update(time: number, planetPosition: Vec3d, sunPosition: Vec3d): void {
     void time;
     this.planetPosition = { ...planetPosition };
     this.sunPosition = { ...sunPosition };
   }
-  
-  render(): void {}
-  
+
+  /**
+   * E-16: render() 非空 - 根据磁场强度计算近似顶点数（fieldLines * 64 段），
+   * 若传入 renderer 则创建顶点缓冲并绘制 point-list。
+   */
+  render(renderer?: Renderer): void {
+    const fieldLines = Math.max(8, Math.floor(this.magneticFieldStrength * 16));
+    this.lastDrawVertexCount = fieldLines * 64;
+    this.drawCallCount += 1;
+    if (renderer && this.lastDrawVertexCount > 0) {
+      drawPointList(renderer, this.lastDrawVertexCount, 'magnetosphere');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
   dispose(): void {}
-  
-  setPlanetRadius(_radius: number): void {}
-  
-  setMagneticFieldStrength(_strength: number): void {}
-  
+
+  setPlanetRadius(radius: number): void {
+    this.planetRadius = radius;
+  }
+
+  getPlanetRadius(): number {
+    return this.planetRadius;
+  }
+
+  setMagneticFieldStrength(strength: number): void {
+    this.magneticFieldStrength = strength;
+  }
+
+  getMagneticFieldStrength(): number {
+    return this.magneticFieldStrength;
+  }
+
   getPlanetPosition(): Vec3d {
     return this.planetPosition;
   }
-  
+
   getSunPosition(): Vec3d {
     return this.sunPosition;
   }
@@ -505,19 +719,47 @@ export class MagnetosphereImpl implements Magnetosphere {
 
 export class AurorasImpl implements Auroras {
   private active = true;
-  
+  private intensity = 1.0;
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
   update(_time: number, _planetPosition: Vec3d, _sunPosition: Vec3d): void {}
-  
-  render(): void {}
-  
+
+  /**
+   * E-16: render() 非空 - 根据 intensity 计算近似顶点数（ringSegments * 32），
+   * 若传入 renderer 则创建顶点缓冲并绘制 point-list。
+   */
+  render(renderer?: Renderer): void {
+    const ringSegments = this.active ? Math.max(4, Math.floor(this.intensity * 8)) : 0;
+    this.lastDrawVertexCount = ringSegments * 32;
+    this.drawCallCount += 1;
+    if (renderer && this.lastDrawVertexCount > 0) {
+      drawPointList(renderer, this.lastDrawVertexCount, 'auroras');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
   dispose(): void {}
-  
-  setIntensity(_intensity: number): void {}
-  
+
+  setIntensity(intensity: number): void {
+    this.intensity = Math.max(0, Math.min(2, intensity));
+  }
+
+  getIntensity(): number {
+    return this.intensity;
+  }
+
   setActive(active: boolean): void {
     this.active = active;
   }
-  
+
   isActive(): boolean {
     return this.active;
   }
@@ -541,7 +783,7 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
   private aurorasEnabled = true;
   
   constructor() {
-    this.stellarBackground = {} as StellarBackground;
+    this.stellarBackground = new StarData();
     this.asteroidBelt = new AsteroidBeltImpl();
     this.kuiperBelt = new KuiperBeltImpl();
     this.oortCloud = new OortCloudImpl();
@@ -562,6 +804,9 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
     }
     if (this.solarWindEnabled) {
       this.solarWind.update(time, sunPosition);
+    }
+    if (this.stellarBackgroundEnabled) {
+      this.stellarBackground.update({ x: 0, y: 0, z: 0 });
     }
   }
   

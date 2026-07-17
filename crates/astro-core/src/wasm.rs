@@ -32,11 +32,12 @@ impl AstroCoreWasm {
 
     /// 注册一段星历（用于离线冒烟，设计文档 P0-7 内置地月样本）。
     /// `body_json` 为 serde_json 序列化的 BodyEphemeris。
+    /// 注册后自动刷新 time_range（E-40）。
     #[wasm_bindgen(js_name = registerEphemeris)]
     pub fn register_ephemeris(&mut self, body_json: &str) -> Result<(), JsValue> {
         let body: BodyEphemeris =
             serde_json::from_str(body_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        self.inner.ephemeris_mut().register(body);
+        self.inner.register_ephemeris(body);
         Ok(())
     }
 

@@ -10,10 +10,12 @@
   "scripts": {
     "start": "node ./src/server.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
   }
 }

@@ -282,9 +282,86 @@ export { TileCoordImpl, TileBoundsImpl, TerrainTileImpl, QuadTreeNodeImpl, Terra
 export type { TileId, TileLevel, TileCoord, TileBounds, Tile, TerrainTile, QuadTreeNode, TerrainLODController, AtmosphereRenderer, AtmosphereParams } from './terrain.js';
 export { LogarithmicScaleMapping, PiecewiseScaleMapping, ScaleManager, convertUnit, toMeters, fromMeters, formatDistance, formatTime, ASTRONOMICAL_UNIT, LIGHT_YEAR, PARSEC } from './scale-mapping.js';
 export type { DistanceUnit, ScaleConfig, ScaleMapping } from './scale-mapping.js';
-export { StarData, AsteroidBeltImpl, KuiperBeltImpl, OortCloudImpl, SolarWindImpl, MagnetosphereImpl, AurorasImpl, ExtendedSpaceEnvironmentImpl, createExtendedSpaceEnvironment, ASTEROID_BELT_RADIUS_RANGE, ASTEROID_BELT_THICKNESS, KUIPER_BELT_RADIUS_RANGE, KUIPER_BELT_THICKNESS, OORT_CLOUD_INNER_RADIUS, OORT_CLOUD_OUTER_RADIUS, SOLAR_WIND_SPEED } from './extended-space.js';
+export { StarData, AsteroidBeltImpl, KuiperBeltImpl, OortCloudImpl, SolarWindImpl, MagnetosphereImpl, AurorasImpl, ExtendedSpaceEnvironmentImpl, createExtendedSpaceEnvironment, drawPointList, ASTEROID_BELT_RADIUS_RANGE, ASTEROID_BELT_THICKNESS, KUIPER_BELT_RADIUS_RANGE, KUIPER_BELT_THICKNESS, OORT_CLOUD_INNER_RADIUS, OORT_CLOUD_OUTER_RADIUS, SOLAR_WIND_SPEED } from './extended-space.js';
 export type { Star, Asteroid, Comet, Particle, ExtendedSpaceEnvironment, StellarBackground, AsteroidBelt, KuiperBelt, OortCloud, SolarWind, Magnetosphere, Auroras } from './extended-space.js';
-export { EventsServiceImpl, CruiseServiceImpl, PureViewingModeImpl, createEventsService, createCruiseService, createPureViewingMode, EVENT_TYPES, CRUISES } from './events-cruises.js';
-export type { EventType, CelestialEvent, CruiseWaypoint, Cruise, EventSearchOptions, EventsService, CruiseService, PureViewingMode } from './events-cruises.js';
+export { EventsServiceImpl, CruiseServiceImpl, PureViewingModeImpl, createEventsService, createCruiseService, createPureViewingMode, EventTimelinePlayer, jumpToEventMax, EVENT_TYPES, CRUISES } from './events-cruises.js';
+export type { EventType, CelestialEvent, EventResult, CruiseWaypoint, Cruise, EventSearchOptions, EventsService, CruiseService, PureViewingMode, CruiseCallbacks, PureViewingCallbacks, TimeSetting, CameraTarget, CameraDirection, LayerVisibility, ResourcePreload, TextCard, ExitState, ScaleMode, EventCameraRecommendation, JumpToEventResult } from './events-cruises.js';
 export { ResourceValidatorImpl, UpdateManagerImpl, TestRunnerImpl, OpsManagerImpl, createResourceValidator, createUpdateManager, createTestRunner, createOpsManager } from './productization.js';
+export { RenderLoop } from './render-loop.js';
+export type {
+  RenderLoopBodyId,
+  RenderLoopCamera,
+  RenderLoopBodyRenderer,
+  RenderLoopOptions,
+  RequestAnimationFrameLike,
+  CancelAnimationFrameLike,
+} from './render-loop.js';
 export type { ResourceType, ValidationStatus, ResourceValidationResult, ValidationReport, ResourceValidator, UpdateInfo, UpdateStatus, UpdateManager, TestResult, TestSuiteResult, TestReport, TestEnvironment, TestRunner, MaintenanceTask, OperationalStats, HealthCheckResult, OpsManager } from './productization.js';
+export {
+  applyToneMapping,
+  applyColorGrading,
+  applyVignette,
+  computeBloomThreshold,
+  computeGaussianWeights,
+  gaussianBlur1D,
+  lerp,
+  blendColors,
+  DEFAULT_TONE_MAPPING,
+  DEFAULT_BLOOM,
+  DEFAULT_COLOR_GRADING,
+  DEFAULT_VIGNETTE,
+  DEFAULT_CHROMATIC_ABERRATION,
+  DEFAULT_POST_PROCESSING,
+  CPUTextureProxy,
+  ToneMappingStage,
+  LuminanceExtractionStage,
+  BloomDownsampleStage,
+  BloomUpsampleStage,
+  ColorGradingStage,
+  VignetteStage,
+  PostProcessingPipelineImpl,
+  createDefaultPipeline,
+} from './hdr.js';
+export type {
+  ToneMappingMode,
+  ToneMappingParams,
+  BloomParams,
+  ColorGradingParams,
+  ColorAdjustment,
+  VignetteParams,
+  ChromaticAberrationParams,
+  PostProcessingParams,
+  PostProcessingTexture,
+  PostProcessingRenderer,
+  PostProcessingStage,
+  PostProcessingPipeline,
+} from './hdr.js';
+export {
+  detectGPU,
+  estimateGPUPerformance,
+  getQualityLevelFromScore,
+  getQualityPreset,
+  autoDetectQuality,
+  PerformanceMonitor,
+  getRecommendedTextureSize,
+  getRecommendedShadowResolution,
+  getRecommendedParticleCount,
+} from './quality.js';
+export type {
+  QualityLevel,
+  GPUVendor,
+  GPUInfo,
+  QualitySettings,
+  PerformanceMetrics,
+} from './quality.js';
+export {
+  computeShadowCone,
+  computeEclipseGeometry,
+  computeLunarEclipse,
+  computeShadowOnSurface,
+  computeShadowMapParams,
+  computeContactTimes,
+  sampleShadowPCF,
+  findRoot,
+} from './shadows.js';
+export type { ShadowCone, EclipseInfo, ShadowParams, ContactPoint, ContactEventType } from './shadows.js';

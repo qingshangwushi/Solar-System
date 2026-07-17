@@ -78,7 +78,10 @@ export type WorkerRequestPayload =
       body_id: number;
       tdb_start: number;
       tdb_end: number;
-      samples: number;
+      /** 采样数。可选，优先使用 step_days（E-33）。 */
+      samples?: number;
+      /** 每步天数。提供时优先于 samples（E-33）。 */
+      step_days?: number;
       reference_frame: ReferenceFrame;
     }
   | {
@@ -218,7 +221,7 @@ export interface WorkerRpcMap {
   };
   'ephemeris.getCoverage': { result: [number, number] | null };
   'state.evaluate': { result: CelestialStateSnapshot };
-  'state.sampleOrbit': { result: Vec3d[] };
+  'state.sampleOrbit': { result: Float64Array };
   'event.search': { result: AstroEvent[] };
   'event.refine': { result: AstroEvent };
   'event.buildObservationPlan': {

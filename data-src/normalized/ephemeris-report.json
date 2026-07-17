@@ -1,0 +1,111 @@
+{
+  "schema": "solar-system-ephemeris-report/v1",
+  "version": "0.1.0",
+  "generated": "smoke",
+  "spk_source": "keplerian-fallback",
+  "time_range_mjd": [
+    15020.0,
+    88069.0
+  ],
+  "chebyshev_degree": 7,
+  "segments_per_body": 4,
+  "bodies_written": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    301
+  ],
+  "error_analysis": {
+    "bodies": [
+      {
+        "body_id": 0,
+        "name": "Sun",
+        "samples": 8,
+        "max_error_km": 0.0,
+        "mean_error_km": 0.0,
+        "p95_error_km": 0.0
+      },
+      {
+        "body_id": 1,
+        "name": "Mercury",
+        "samples": 64,
+        "max_error_km": 39079057.31010757,
+        "mean_error_km": 27939561.499252405,
+        "p95_error_km": 38066112.51580632
+      },
+      {
+        "body_id": 2,
+        "name": "Venus",
+        "samples": 64,
+        "max_error_km": 41150776.30661934,
+        "mean_error_km": 30461355.81015549,
+        "p95_error_km": 41149399.36935205
+      },
+      {
+        "body_id": 3,
+        "name": "Earth",
+        "samples": 64,
+        "max_error_km": 83601807.33341223,
+        "mean_error_km": 61513662.46305638,
+        "p95_error_km": 83585891.5023621
+      },
+      {
+        "body_id": 4,
+        "name": "Mars",
+        "samples": 64,
+        "max_error_km": 267700776.0178881,
+        "mean_error_km": 197096517.41904467,
+        "p95_error_km": 266496567.40601498
+      },
+      {
+        "body_id": 5,
+        "name": "Jupiter",
+        "samples": 64,
+        "max_error_km": 933027644.4548968,
+        "mean_error_km": 590720508.6256844,
+        "p95_error_km": 931465345.286839
+      },
+      {
+        "body_id": 6,
+        "name": "Saturn",
+        "samples": 64,
+        "max_error_km": 59272212.33259894,
+        "mean_error_km": 39073004.96173853,
+        "p95_error_km": 58508985.56375857
+      },
+      {
+        "body_id": 7,
+        "name": "Uranus",
+        "samples": 64,
+        "max_error_km": 83250.74584730272,
+        "mean_error_km": 39171.338199048645,
+        "p95_error_km": 75715.29491309989
+      },
+      {
+        "body_id": 8,
+        "name": "Neptune",
+        "samples": 64,
+        "max_error_km": 419.4938166986488,
+        "mean_error_km": 245.75757274776427,
+        "p95_error_km": 397.36898957570037
+      },
+      {
+        "body_id": 301,
+        "name": "Moon",
+        "samples": 64,
+        "max_error_km": 84002893.0625047,
+        "mean_error_km": 61514062.54290916,
+        "p95_error_km": 83607981.25975783
+      }
+    ],
+    "overall_max_error_km": 933027644.4548968,
+    "overall_mean_error_km": 100835809.04176128,
+    "body_count": 10
+  }
+}

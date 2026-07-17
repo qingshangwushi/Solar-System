@@ -16,6 +16,7 @@ export interface ResourceDescriptor {
   priority?: number;
   dependencies?: string[];
   metadata?: Record<string, unknown>;
+  range?: { start: number; end: number };
 }
 
 export interface ResourceEntry<T = unknown> {
@@ -427,4 +428,238 @@ export class PriorityLoadQueue {
   get pending(): number {
     return this.queue.length;
   }
+}
+
+export type VramBudgetTier = 'cinematic' | 'standard' | 'low';
+
+export interface VramBudgetConfig {
+  tier: VramBudgetTier;
+  availableVramBytes?: number;
+}
+
+export interface VramAllocation {
+  bodyId: string | number;
+  budgetBytes: number;
+  maxLod: number;
+  isPrimary: boolean;
+}
+
+export interface VramBudgetStats {
+  totalBudgetBytes: number;
+  allocatedBytes: number;
+  remainingBytes: number;
+  primaryTarget: string | number | null;
+  allocations: VramAllocation[];
+}
+
+export class VramBudgeter {
+  private tier: VramBudgetTier;
+  private availableVramBytes?: number;
+  private totalBudgetBytes: number;
+  private allocations = new Map<string | number, VramAllocation>();
+  private primaryTarget: string | number | null = null;
+  private dirty = false;
+
+  constructor(config: VramBudgetConfig) {
+    this.tier = config.tier;
+    this.availableVramBytes = config.availableVramBytes;
+    this.totalBudgetBytes = this.computeBudget();
+  }
+
+  private computeBudget(): number {
+    let tierBudget: number;
+    if (this.tier === 'cinematic') {
+      tierBudget = 5.5 * 1024 * 1024 * 1024;
+    } else if (this.tier === 'standard') {
+      tierBudget = 2 * 1024 * 1024 * 1024;
+    } else {
+      tierBudget = 768 * 1024 * 1024;
+    }
+    if (this.availableVramBytes !== undefined) {
+      return Math.min(tierBudget, this.availableVramBytes);
+    }
+    return tierBudget;
+  }
+
+  setPrimaryTarget(bodyId: string | number): void {
+    this.primaryTarget = bodyId;
+    this.dirty = true;
+  }
+
+  allocate(
+    targets: Array<{ bodyId: string | number; importance: number; baseLod: number }>,
+  ): VramAllocation[] {
+    const allocatable = this.totalBudgetBytes * 0.95;
+    const primaryBudget = allocatable * 0.5;
+    const nonPrimaryBudget = allocatable * 0.5;
+
+    this.allocations.clear();
+
+    const result: VramAllocation[] = [];
+
+    const nonPrimaryTargets = targets.filter((t) => t.bodyId !== this.primaryTarget);
+    const sumImportance = nonPrimaryTargets.reduce((sum, t) => sum + t.importance, 0);
+
+    for (const target of targets) {
+      const isPrimary = target.bodyId === this.primaryTarget;
+      let budgetBytes: number;
+      let maxLod: number;
+
+      if (isPrimary) {
+        budgetBytes = primaryBudget;
+        maxLod = 0;
+      } else {
+        const share = sumImportance > 0 ? target.importance / sumImportance : 0;
+        budgetBytes = nonPrimaryBudget * share;
+        maxLod = Math.max(target.baseLod, 1);
+      }
+
+      const allocation: VramAllocation = {
+        bodyId: target.bodyId,
+        budgetBytes,
+        maxLod,
+        isPrimary,
+      };
+      this.allocations.set(target.bodyId, allocation);
+      result.push(allocation);
+    }
+
+    this.dirty = false;
+    return result;
+  }
+
+  getAllocation(bodyId: string | number): VramAllocation | undefined {
+    return this.allocations.get(bodyId);
+  }
+
+  private getAllocatedBytes(): number {
+    let allocatedBytes = 0;
+    for (const allocation of this.allocations.values()) {
+      allocatedBytes += allocation.budgetBytes;
+    }
+    return allocatedBytes;
+  }
+
+  getStats(): VramBudgetStats {
+    const allocatedBytes = this.getAllocatedBytes();
+    const allocations = Array.from(this.allocations.values());
+    return {
+      totalBudgetBytes: this.totalBudgetBytes,
+      allocatedBytes,
+      remainingBytes: this.totalBudgetBytes - allocatedBytes,
+      primaryTarget: this.primaryTarget,
+      allocations,
+    };
+  }
+
+  canAllocate(requiredBytes: number): boolean {
+    return this.getAllocatedBytes() + requiredBytes <= this.totalBudgetBytes;
+  }
+
+  release(bodyId: string | number): void {
+    this.allocations.delete(bodyId);
+  }
+
+  setTier(tier: VramBudgetTier): void {
+    this.tier = tier;
+    this.totalBudgetBytes = this.computeBudget();
+    this.dirty = true;
+  }
+
+  getTier(): VramBudgetTier {
+    return this.tier;
+  }
+
+  isDirty(): boolean {
+    return this.dirty;
+  }
+}
+
+export interface ResourceBundle {
+  id: string;
+  resourceIds: string[];
+  loaded: boolean;
+  descriptors?: ResourceDescriptor[];
+}
+
+export class ResourceBundleManager {
+  private bundles = new Map<string, ResourceBundle>();
+
+  constructor(private manager: ResourceManager) {}
+
+  registerBundle(bundle: ResourceBundle): void {
+    this.bundles.set(bundle.id, { ...bundle, loaded: false });
+  }
+
+  async loadBundle(bundleId: string): Promise<void> {
+    const bundle = this.bundles.get(bundleId);
+    if (!bundle) {
+      throw new Error(`Bundle not found: ${bundleId}`);
+    }
+
+    const descriptors = bundle.descriptors ?? [];
+    await Promise.all(descriptors.map((d) => this.manager.load(d)));
+    bundle.loaded = true;
+  }
+
+  unloadBundle(bundleId: string): void {
+    const bundle = this.bundles.get(bundleId);
+    if (!bundle) {
+      throw new Error(`Bundle not found: ${bundleId}`);
+    }
+    for (const id of bundle.resourceIds) {
+      this.manager.unload(id);
+    }
+    bundle.loaded = false;
+  }
+
+  listBundles(): ResourceBundle[] {
+    return Array.from(this.bundles.values());
+  }
+
+  isBundleLoaded(bundleId: string): boolean {
+    const bundle = this.bundles.get(bundleId);
+    return bundle?.loaded ?? false;
+  }
+}
+
+export class RangeAwareDataLoader implements ResourceLoader<ArrayBuffer> {
+  readonly type: ResourceType = 'data';
+
+  async load(descriptor: ResourceDescriptor, options?: LoadOptions): Promise<ArrayBuffer> {
+    const headers: Record<string, string> = {};
+    if (descriptor.range) {
+      headers['Range'] = `bytes=${descriptor.range.start}-${descriptor.range.end}`;
+    }
+    const response = await fetch(descriptor.url, {
+      signal: options?.signal,
+      headers,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to load data: ${response.statusText}`);
+    }
+    return response.arrayBuffer();
+  }
+
+  unload(_data: ArrayBuffer): void {}
+
+  estimateSize(data: ArrayBuffer): number {
+    return data.byteLength;
+  }
+}
+
+export interface LazyResourceOptions<T> {
+  descriptor: ResourceDescriptor;
+  transform?: (data: unknown) => { default: T };
+}
+
+export function createLazyResource<T>(
+  manager: ResourceManager,
+  options: LazyResourceOptions<T>,
+): () => Promise<{ default: T }> {
+  return () =>
+    manager.load<T>(options.descriptor).then((data) => {
+      if (options.transform) return options.transform(data);
+      return { default: data as unknown as T };
+    });
 }

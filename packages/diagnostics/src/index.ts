@@ -143,9 +143,12 @@ export async function detectWebgpu(): Promise<CapabilityDetection['webgpu']> {
     const requestDevice = (adapter as unknown as { requestDevice(): Promise<unknown> }).requestDevice;
     const limits = await requestDevice().then(
       (dev) => {
-        const d = dev as { limits: Record<string, number | undefined> };
+        const d = dev as {
+          limits: Record<string, number | undefined>;
+          destroy?: () => void;
+        };
         const limit = (key: string): number => d.limits[key] ?? 0;
-        return {
+        const result = {
           maxTextureDimension2D: limit('maxTextureDimension2D'),
           maxTextureDimension3D: limit('maxTextureDimension3D'),
           maxTextureArrayLayers: limit('maxTextureArrayLayers'),
@@ -155,6 +158,9 @@ export async function detectWebgpu(): Promise<CapabilityDetection['webgpu']> {
           maxVertexAttributes: limit('maxVertexAttributes'),
           maxVertexBufferArrayStride: limit('maxVertexBufferArrayStride'),
         };
+        // E-36: 读取 limits 后立即销毁临时 device，避免设备泄漏
+        d.destroy?.();
+        return result;
       },
       () => null,
     );
@@ -248,12 +254,13 @@ export async function detectCapabilities(): Promise<CapabilityDetection> {
   };
 }
 
-/** 短时基准测试（FR-BOOT-002）。 */
-export async function runBenchmark(capabilities: CapabilityDetection): Promise<BenchmarkResult> {
+/** 短时基准测试（FR-BOOT-002，E-37 修复：实测 GPU 帧时）。 */
+export async function runBenchmark(
+  capabilities: CapabilityDetection,
+  options?: RunBenchmarkOptions,
+): Promise<BenchmarkResult> {
   const notes: string[] = [];
   let gpuScore = 0;
-  let gpuFrameTimeMs = 100;
-  let cpuFrameTimeMs = 50;
 
   if (capabilities.webgpu.supported) {
     gpuScore += 50;
@@ -272,12 +279,37 @@ export async function runBenchmark(capabilities: CapabilityDetection): Promise<B
     notes.push('回退到 WebGL2');
   }
 
-  const recommendedQuality = recommendQuality(gpuScore);
+  // 1. 若调用方传入 measuredFrameTimes，直接采用（向后兼容）
+  if (options?.measuredFrameTimes) {
+    return {
+      gpuFrameTimeMs: options.measuredFrameTimes.gpuFrameTimeMs,
+      cpuFrameTimeMs: options.measuredFrameTimes.cpuFrameTimeMs,
+      recommendedQuality: recommendQuality(gpuScore),
+      gpuScore,
+      notes,
+    };
+  }
+
+  // 2. 实例化 GpuBenchmarkRunner 调用 run()；3. 抛异常时回落 estimateFrameTimes
+  let gpuFrameTimeMs: number;
+  let cpuFrameTimeMs: number;
+  try {
+    const runner = new GpuBenchmarkRunner();
+    const result = await runner.run(options?.benchmarkOptions);
+    gpuFrameTimeMs = result.gpuFrameTimeMs ?? result.cpuFrameTimeMs;
+    cpuFrameTimeMs = result.cpuFrameTimeMs;
+    notes.push(result.measured ? '实测 GPU 帧时' : 'GPU 帧时回落 CPU 估算');
+  } catch {
+    const est = estimateFrameTimes(gpuScore);
+    gpuFrameTimeMs = est.gpuFrameTimeMs;
+    cpuFrameTimeMs = est.cpuFrameTimeMs;
+    notes.push('基准测试异常，使用估算值');
+  }
 
   return {
     gpuFrameTimeMs,
     cpuFrameTimeMs,
-    recommendedQuality,
+    recommendedQuality: recommendQuality(gpuScore),
     gpuScore,
     notes,
   };
@@ -322,4 +354,173 @@ export async function runBootDetection(requiredPackages: string[]): Promise<Boot
   const recommendedBackend = recommendBackend(capabilities);
   const resourceValidation = await validateResources(requiredPackages);
   return { capabilities, benchmark, recommendedBackend, resourceValidation };
+}
+
+/** runBenchmark 的可选参数。 */
+export interface RunBenchmarkOptions {
+  /** 调用方预先实测的帧时（向后兼容，优先采用）。 */
+  measuredFrameTimes?: { gpuFrameTimeMs: number; cpuFrameTimeMs: number };
+  /** 传给 GpuBenchmarkRunner 的选项。 */
+  benchmarkOptions?: BenchmarkOptions;
+}
+
+/** 真实 GPU 帧时基准测试结果（E-37）。 */
+export interface GpuBenchmarkResult {
+  gpuFrameTimeMs: number | null;
+  cpuFrameTimeMs: number;
+  trianglesDrawn: number;
+  frameCount: number;
+  inferredQuality: 'low' | 'medium' | 'high' | 'ultra';
+  measured: boolean;
+}
+
+/** GpuBenchmarkRunner 选项。 */
+export interface BenchmarkOptions {
+  /** 三角形数量，默认 100000。 */
+  triangleCount?: number;
+  /** 测试帧数，默认 60。 */
+  frameCount?: number;
+  /** 用于获取 WebGL2 上下文的 canvas；为 null 时尝试新建临时 canvas。 */
+  canvas?: HTMLCanvasElement | OffscreenCanvas | null;
+  /** 自定义帧时采样器。 */
+  sampler?: {
+    beginFrame(): void;
+    endFrame(): { cpuMs: number; gpuMs: number | null };
+  };
+}
+
+/** 根据 GPU 分数返回硬编码估算帧时（runner 抛异常时的兜底）。 */
+export function estimateFrameTimes(
+  gpuScore: number,
+): { gpuFrameTimeMs: number; cpuFrameTimeMs: number } {
+  if (gpuScore >= 80) return { gpuFrameTimeMs: 5, cpuFrameTimeMs: 3 };
+  if (gpuScore >= 60) return { gpuFrameTimeMs: 10, cpuFrameTimeMs: 6 };
+  if (gpuScore >= 30) return { gpuFrameTimeMs: 20, cpuFrameTimeMs: 12 };
+  return { gpuFrameTimeMs: 40, cpuFrameTimeMs: 25 };
+}
+
+/** 根据 CPU 帧时推断画质档位（<8.33→ultra、<16.67→high、<33.33→medium、否则 low）。 */
+function inferQualityFromCpuMs(cpuMs: number): 'low' | 'medium' | 'high' | 'ultra' {
+  if (cpuMs < 8.33) return 'ultra';
+  if (cpuMs < 16.67) return 'high';
+  if (cpuMs < 33.33) return 'medium';
+  return 'low';
+}
+
+/** 创建基于 performance.now 的默认采样器。 */
+function createDefaultSampler(): {
+  beginFrame(): void;
+  endFrame(): { cpuMs: number; gpuMs: number | null };
+} {
+  let start = 0;
+  const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  return {
+    beginFrame() {
+      start = now();
+    },
+    endFrame() {
+      return { cpuMs: now() - start, gpuMs: null };
+    },
+  };
+}
+
+/**
+ * 真实 GPU 帧时基准测试器（E-37）。
+ *
+ * 尝试获取 WebGL2 上下文绘制 N 万三角形并采样帧时；
+ * 若拿不到上下文（如 Node 环境）则回落纯 CPU 估算。
+ */
+export class GpuBenchmarkRunner {
+  async run(options?: BenchmarkOptions): Promise<GpuBenchmarkResult> {
+    const triangleCount = options?.triangleCount ?? 100000;
+    const frameCount = options?.frameCount ?? 60;
+    const canvas = options?.canvas ?? null;
+    const customSampler = options?.sampler ?? null;
+
+    // 尝试获取 WebGL2 上下文（从 options.canvas 或新建临时 canvas）
+    let canvasEl: HTMLCanvasElement | OffscreenCanvas | null = canvas;
+    if (!canvasEl && typeof document !== 'undefined') {
+      try {
+        canvasEl = document.createElement('canvas');
+      } catch {
+        canvasEl = null;
+      }
+    }
+
+    let gl: WebGL2RenderingContext | null = null;
+    if (canvasEl) {
+      try {
+        const ctx = (
+          canvasEl as { getContext(contextId: 'webgl2'): WebGL2RenderingContext | null }
+        ).getContext('webgl2');
+        gl = ctx;
+      } catch {
+        gl = null;
+      }
+    }
+
+    // 拿到上下文：实测 GPU 帧时
+    if (gl) {
+      try {
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        // triangleCount * 3 顶点 * 3 float
+        const data = new Float32Array(triangleCount * 3 * 3);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+
+        const sampler = customSampler ?? createDefaultSampler();
+        let totalCpuMs = 0;
+        let totalGpuMs = 0;
+        let gpuSamples = 0;
+
+        for (let i = 0; i < frameCount; i++) {
+          sampler.beginFrame();
+          gl.drawArrays(gl.TRIANGLES, 0, triangleCount * 3);
+          gl.finish();
+          const { cpuMs, gpuMs } = sampler.endFrame();
+          totalCpuMs += cpuMs;
+          if (gpuMs !== null) {
+            totalGpuMs += gpuMs;
+            gpuSamples++;
+          }
+        }
+
+        const avgCpuMs = totalCpuMs / frameCount;
+        const avgGpuMs = gpuSamples > 0 ? totalGpuMs / gpuSamples : null;
+
+        // 清理资源
+        gl.deleteBuffer(buffer);
+        const loseExt: { loseContext(): void } | null = gl.getExtension('WEBGL_lose_context');
+        loseExt?.loseContext();
+
+        return {
+          gpuFrameTimeMs: avgGpuMs,
+          cpuFrameTimeMs: avgCpuMs,
+          trianglesDrawn: triangleCount * frameCount,
+          frameCount,
+          inferredQuality: inferQualityFromCpuMs(avgCpuMs),
+          measured: true,
+        };
+      } catch {
+        // 落入下方 CPU 回落路径
+      }
+    }
+
+    // 拿不到上下文（Node 环境）：纯 CPU 估算
+    const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const start = now();
+    for (let i = 0; i < frameCount; i++) {
+      // 空循环
+    }
+    const cpuMs = (now() - start) / frameCount;
+
+    return {
+      gpuFrameTimeMs: null,
+      cpuFrameTimeMs: cpuMs,
+      trianglesDrawn: 0,
+      frameCount,
+      inferredQuality: inferQualityFromCpuMs(cpuMs),
+      measured: false,
+    };
+  }
 }

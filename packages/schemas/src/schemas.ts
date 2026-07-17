@@ -66,7 +66,13 @@ export const catalogSchema = {
         type: 'object',
         required: ['body_id', 'type', 'name_zh', 'name_en', 'mean_radius_km', 'precision', 'asset_tier', 'ephemeris_provider', 'sources'],
         properties: {
-          body_id: { type: 'integer', minimum: 0 },
+          body_id: {
+            // 修复 E-12 / 支持 E-31 彗星编号：彗星使用 "1P"、"19P" 等编号，需同时接受 integer 与 string。
+            oneOf: [
+              { type: 'integer', minimum: 0 },
+              { type: 'string', pattern: '^[0-9]+[A-Z]$' },
+            ],
+          },
           type: { type: 'string' },
           parent_body_id: { type: ['integer', 'null'] },
           name_zh: { type: 'string' },

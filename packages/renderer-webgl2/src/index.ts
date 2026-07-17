@@ -30,6 +30,14 @@ class WebGl2Renderer implements Renderer {
   capabilities: RendererCapabilities;
 
   private gl: WebGL2RenderingContext | null = null;
+  private loseExt: WEBGL_lose_context | null = null;
+  private canvas: HTMLCanvasElement | null = null;
+  private contextLost = false;
+
+  /** 用户注册的上下文丢失回调（可选）。 */
+  onContextLost: (() => void) | null = null;
+  /** 用户注册的上下文恢复回调（可选）。 */
+  onContextRestored: (() => void) | null = null;
 
   private buffers = new Map<string, WebGLBuffer>();
   private textures = new Map<string, WebGLTexture>();
@@ -55,12 +63,72 @@ class WebGl2Renderer implements Renderer {
     }
 
     this.gl = gl;
+    this.canvas = canvas;
+    this.contextLost = false;
 
+    // 注册 WEBGL_lose_context 扩展，便于主动触发/恢复上下文丢失
+    this.loseExt = gl.getExtension('WEBGL_lose_context');
+
+    // 注册 webglcontextlost / webglcontextrestored 事件监听
+    canvas.addEventListener('webglcontextlost', this.handleContextLost);
+    canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
+
+    this.setupDefaultState(gl);
+    this.capabilities = this.getDeviceCapabilities(gl);
+  }
+
+  /** 默认 GL 状态（init 与 context restored 后均调用）。 */
+  private setupDefaultState(gl: WebGL2RenderingContext): void {
     gl.clearColor(0, 0, 0, 1);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
+  }
 
-    this.capabilities = this.getDeviceCapabilities(gl);
+  private handleContextLost = (event: Event): void => {
+    // 必须 preventDefault 才能后续恢复
+    event.preventDefault();
+    this.contextLost = true;
+
+    // 清空所有 GPU 资源句柄（上下文丢失后这些句柄已无效）
+    this.buffers.clear();
+    this.textures.clear();
+    this.programs.clear();
+
+    if (this.onContextLost) {
+      this.onContextLost();
+    }
+  };
+
+  private handleContextRestored = (): void => {
+    this.contextLost = false;
+    const gl = this.gl;
+    if (gl) {
+      // 重新获取 lose_context 扩展（上下文恢复后扩展可能需要重新查询）
+      this.loseExt = gl.getExtension('WEBGL_lose_context');
+      this.setupDefaultState(gl);
+    }
+    if (this.onContextRestored) {
+      this.onContextRestored();
+    }
+  };
+
+  /** 当前上下文是否处于丢失状态。 */
+  isContextLost(): boolean {
+    return this.contextLost;
+  }
+
+  /** 主动触发上下文丢失（用于测试或主动重置）。 */
+  triggerContextLoss(): void {
+    if (this.loseExt) {
+      this.loseExt.loseContext();
+    }
+  }
+
+  /** 主动恢复上下文（与 triggerContextLoss 配对）。 */
+  restoreContext(): void {
+    if (this.loseExt) {
+      this.loseExt.restoreContext();
+    }
   }
 
   private getDeviceCapabilities(gl: WebGL2RenderingContext): RendererCapabilities {
@@ -77,7 +145,17 @@ class WebGl2Renderer implements Renderer {
   }
 
   destroy(): void {
-    if (!this.gl) return;
+    if (this.canvas) {
+      this.canvas.removeEventListener('webglcontextlost', this.handleContextLost);
+      this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored);
+    }
+
+    if (!this.gl) {
+      this.canvas = null;
+      this.loseExt = null;
+      this.contextLost = false;
+      return;
+    }
 
     this.buffers.forEach((buf) => this.gl!.deleteBuffer(buf));
     this.textures.forEach((tex) => this.gl!.deleteTexture(tex));
@@ -88,6 +166,9 @@ class WebGl2Renderer implements Renderer {
     this.programs.clear();
 
     this.gl = null;
+    this.loseExt = null;
+    this.canvas = null;
+    this.contextLost = false;
   }
 
   resize(width: number, height: number): void {

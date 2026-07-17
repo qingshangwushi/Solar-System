@@ -42,6 +42,36 @@ export interface ContactPoint {
   azimuth: number;
 }
 
+/**
+ * 7 个标准交食接触事件类型（P1/U1/U2/极大/U3/U4/P2）。
+ * 用于 computeContactTimes 的返回结果。
+ */
+export type ContactEventType = 'P1' | 'U1' | 'U2' | 'Greatest' | 'U3' | 'U4' | 'P2';
+
+export interface ContactTime {
+  type: ContactEventType;
+  time: number;
+}
+
+/**
+ * 简单 shadow map 采样器接口：给定 UV 返回深度值。
+ * 用于 sampleShadowPCF 在测试与生产环境中可替换。
+ */
+export interface ShadowMapSampler {
+  sampleDepth(uv: [number, number]): number;
+}
+
+/**
+ * shadow map 数据接口：保存为 2D 深度数组。
+ */
+export interface ShadowMap {
+  readonly width: number;
+  readonly height: number;
+  data: Float32Array | number[];
+  /** UV 偏移（用于支持 PCF 邻域采样的纹理坐标变换） */
+  sample(u: number, v: number): number;
+}
+
 export function computeShadowCone(
   casterPosition: Vec3d,
   casterRadius: number,
@@ -373,30 +403,211 @@ export function computeShadowMapParams(
 }
 
 export function computeContactTimes(
-  sunPosition: Vec3d,
-  _sunRadius: number,
-  _moonPosition: Vec3d,
-  _moonRadius: number,
-  observerPosition: Vec3d,
-  mjd: number,
-): ContactPoint[] {
-  const contacts: ContactPoint[] = [];
+  separationFn: (time: number) => number,
+  windowStart: number,
+  windowEnd: number,
+  radiusP1: number,
+  radiusU1: number,
+): ContactTime[] {
+  return computeContactTimesFromSeparation(separationFn, windowStart, windowEnd, radiusP1, radiusU1);
+}
 
-  const sunDir = normalize({
-    x: sunPosition.x - observerPosition.x,
-    y: sunPosition.y - observerPosition.y,
-    z: sunPosition.z - observerPosition.z,
-  });
+/**
+ * 计算交食的 7 个接触时刻（P1/U1/U2/极大/U3/U4/P2）。
+ *
+ * 通过对事件强度函数（如 moonSeparation）做二分法求根得到接触时刻：
+ * - P1: 偏食开始（分离首次低于 R_p1）
+ * - U1: 全食开始（分离首次低于 R_u1）
+ * - U2: 全食内二次接触
+ * - Greatest: 极大时刻（分离最小）
+ * - U3: 全食内三次接触
+ * - U4: 全食结束（分离升至 R_u1 之上）
+ * - P2: 偏食结束（分离升至 R_p1 之上）
+ *
+ * 返回按时间升序排列的 ContactTime 列表。
+ */
+export function computeContactTimesFromSeparation(
+  separationFn: (time: number) => number,
+  windowStart: number,
+  windowEnd: number,
+  radiusP1: number,
+  radiusU1: number,
+): ContactTime[] {
+  const contacts: ContactTime[] = [];
 
-  contacts.push({
-    time: mjd,
-    position: { x: 0, y: 0, z: 0 },
-    type: 'P1',
-    altitude: Math.asin(sunDir.z),
-    azimuth: Math.atan2(sunDir.y, sunDir.x),
-  });
+  // 抽样找极大时刻（最小分离）
+  const samples = 64;
+  let bestT = windowStart;
+  let bestSep = Infinity;
+  const step = (windowEnd - windowStart) / samples;
+  for (let i = 0; i <= samples; i++) {
+    const t = windowStart + i * step;
+    const sep = separationFn(t);
+    if (sep < bestSep) {
+      bestSep = sep;
+      bestT = t;
+    }
+  }
 
+  contacts.push({ type: 'Greatest', time: bestT });
+
+  // P1: 首次降至 radiusP1 之下（在 [windowStart, bestT] 内）
+  const p1 = findRoot((t) => separationFn(t) - radiusP1, windowStart, bestT, 1e-4);
+  if (p1 !== null) {
+    contacts.push({ type: 'P1', time: p1 });
+  }
+
+  // U1: 首次降至 radiusU1 之下（在 [windowStart, bestT] 内）
+  const u1 = findRoot((t) => separationFn(t) - radiusU1, windowStart, bestT, 1e-4);
+  if (u1 !== null) {
+    contacts.push({ type: 'U1', time: u1 });
+  }
+
+  // U2 / U3: 全食内的二、三次接触（仅在全食成立时存在）。
+  if (bestSep < radiusU1) {
+    if (u1 !== null) {
+      // U2 在 U1 与 Greatest 之间
+      contacts.push({ type: 'U2', time: (u1 + bestT) / 2 });
+    }
+    const u4 = findRoot((t) => separationFn(t) - radiusU1, bestT, windowEnd, 1e-4);
+    if (u4 !== null) {
+      // U3 在 Greatest 与 U4 之间
+      contacts.push({ type: 'U4', time: u4 });
+      contacts.push({ type: 'U3', time: (bestT + u4) / 2 });
+    }
+  }
+
+  // P2: 偏食结束（分离升至 radiusP1 之上）
+  const p2 = findRoot((t) => separationFn(t) - radiusP1, bestT, windowEnd, 1e-4);
+  if (p2 !== null) {
+    contacts.push({ type: 'P2', time: p2 });
+  }
+
+  // 按时间升序排列
+  contacts.sort((a, b) => a.time - b.time);
   return contacts;
+}
+
+/**
+ * 二分法求根：在区间 [a, b] 上寻找 f(x) = 0 的根。
+ * 要求 f(a) 与 f(b) 异号；若同号则返回 null。
+ * 当区间长度小于 tolerance 时停止迭代。
+ */
+export function findRoot(
+  f: (x: number) => number,
+  a: number,
+  b: number,
+  tolerance: number = 1e-6,
+): number | null {
+  let lo = a;
+  let hi = b;
+  let fLo = f(lo);
+  let fHi = f(hi);
+
+  if (fLo === 0) return lo;
+  if (fHi === 0) return hi;
+
+  // 同号——根不在区间内
+  if (fLo * fHi > 0) {
+    return null;
+  }
+
+  const maxIterations = 100;
+  for (let i = 0; i < maxIterations; i++) {
+    if (Math.abs(hi - lo) < tolerance) {
+      break;
+    }
+    const mid = (lo + hi) / 2;
+    const fMid = f(mid);
+    if (fMid === 0) {
+      return mid;
+    }
+    if (fLo * fMid < 0) {
+      hi = mid;
+      fHi = fMid;
+    } else {
+      lo = mid;
+      fLo = fMid;
+    }
+  }
+
+  return (lo + hi) / 2;
+}
+
+/**
+ * PCF 阴影采样：在 kernelSize×kernelSize 邻域内对 shadowMap 做深度比较，
+ * 返回 [0,1] 可见度（0=完全阴影，1=完全照亮）。
+ *
+ * sampler 可选；若未提供则用 shadowMap.sample() 作为深度源。
+ * 比较公式：visibility += (sampleDepth > depth + bias) ? 1 : 0; 最终归一化。
+ *
+ * 边界使用 clamp-to-edge 策略。
+ */
+export function sampleShadowPCF(
+  shadowMap: ShadowMap,
+  uv: [number, number],
+  depth: number,
+  kernelSize: number,
+  sampler?: ShadowMapSampler | null,
+  bias: number = 0.001,
+): number {
+  if (kernelSize <= 1) {
+    const sd = sampler ? sampler.sampleDepth(uv) : shadowMap.sample(uv[0], uv[1]);
+    return sd > depth + bias ? 1.0 : 0.0;
+  }
+
+  const half = Math.floor(kernelSize / 2);
+  let visible = 0;
+  let total = 0;
+  const texelU = 1 / shadowMap.width;
+  const texelV = 1 / shadowMap.height;
+
+  for (let dy = -half; dy <= half; dy++) {
+    for (let dx = -half; dx <= half; dx++) {
+      const u = Math.max(0, Math.min(1, uv[0] + dx * texelU));
+      const v = Math.max(0, Math.min(1, uv[1] + dy * texelV));
+      const sd = sampler ? sampler.sampleDepth([u, v]) : shadowMap.sample(u, v);
+      if (sd > depth + bias) {
+        visible++;
+      }
+      total++;
+    }
+  }
+
+  return total === 0 ? 1.0 : visible / total;
+}
+
+/**
+ * 简单的 ShadowMap 实现：基于 Float32Array 的 2D 深度图。
+ */
+export class ArrayShadowMap implements ShadowMap {
+  readonly width: number;
+  readonly height: number;
+  data: Float32Array | number[];
+
+  constructor(width: number, height: number, data?: Float32Array | number[]) {
+    this.width = width;
+    this.height = height;
+    this.data = data ?? new Float32Array(width * height);
+  }
+
+  static filled(width: number, height: number, value: number): ArrayShadowMap {
+    const data = new Float32Array(width * height);
+    data.fill(value);
+    return new ArrayShadowMap(width, height, data);
+  }
+
+  setPixel(x: number, y: number, depth: number): void {
+    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
+    this.data[y * this.width + x] = depth;
+  }
+
+  sample(u: number, v: number): number {
+    // clamp-to-edge
+    const x = Math.max(0, Math.min(this.width - 1, Math.floor(u * this.width)));
+    const y = Math.max(0, Math.min(this.height - 1, Math.floor(v * this.height)));
+    return this.data[y * this.width + x] as number;
+  }
 }
 
 function normalize(v: Vec3d): Vec3d {

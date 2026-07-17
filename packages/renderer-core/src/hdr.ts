@@ -4,6 +4,17 @@
  * 实现 HDR 色调映射、泛光、颜色分级等功能。
  */
 
+import type {
+  BackendType,
+  BufferDescriptor,
+  BufferHandle,
+  DrawCall,
+  RenderPassDescriptor,
+  TextureDescriptor,
+  TextureFormat,
+  TextureHandle,
+} from './index.js';
+
 export type ToneMappingMode = 'linear' | 'reinhard' | 'filmic' | 'aces' | 'custom';
 
 export interface ToneMappingParams {
@@ -431,4 +442,584 @@ export function blendColors(
     lerp(color1[1], color2[1], alpha),
     lerp(color1[2], color2[2], alpha),
   ];
+}
+
+// ============================================================================
+// GPU Post-Processing Pipeline (E-06)
+// ============================================================================
+
+/**
+ * 抽象的 GPU 纹理句柄。具体后端（WebGPU/WebGL2）实现自己的纹理对象。
+ */
+export interface PostProcessingTexture {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+  readonly format: TextureFormat;
+}
+
+/**
+ * 后端渲染器接口（PostProcessing 用）。最小子集，避免与主 Renderer 接口耦合。
+ */
+export interface PostProcessingRenderer {
+  readonly backend: BackendType;
+  createBuffer(desc: BufferDescriptor): BufferHandle;
+  createTexture(desc: TextureDescriptor): TextureHandle;
+  destroyTexture(handle: TextureHandle): void;
+  beginPass(desc: RenderPassDescriptor): void;
+  draw(call: DrawCall): void;
+  endPass(): void;
+}
+
+/**
+ * 单个后处理阶段。render() 接收 input texture、写入 output texture。
+ * 当 renderer 为 null 时，stage 应安全地不执行 GPU 操作（用于测试环境）。
+ */
+export interface PostProcessingStage {
+  readonly name: string;
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void;
+}
+
+/**
+ * 后处理管线：维护 stages 数组，依次执行。
+ */
+export interface PostProcessingPipeline {
+  addStage(stage: PostProcessingStage): void;
+  removeStage(name: string): void;
+  getStages(): PostProcessingStage[];
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void;
+  dispose(): void;
+}
+
+/**
+ * 简单的 CPU 端纹理代理——保存每个像素的 HDR 颜色，用于在无 GPU 环境下测试 stage 行为。
+ */
+export class CPUTextureProxy implements PostProcessingTexture {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+  readonly format: TextureFormat;
+  data: Float32Array;
+
+  constructor(id: string, width: number, height: number, format: TextureFormat = 'rgba16float') {
+    this.id = id;
+    this.width = width;
+    this.height = height;
+    this.format = format;
+    this.data = new Float32Array(width * height * 4);
+  }
+
+  static fromColor(
+    id: string,
+    width: number,
+    height: number,
+    color: [number, number, number],
+  ): CPUTextureProxy {
+    const tex = new CPUTextureProxy(id, width, height);
+    for (let i = 0; i < width * height; i++) {
+      tex.data[i * 4 + 0] = color[0];
+      tex.data[i * 4 + 1] = color[1];
+      tex.data[i * 4 + 2] = color[2];
+      tex.data[i * 4 + 3] = 1.0;
+    }
+    return tex;
+  }
+
+  getPixel(x: number, y: number): [number, number, number, number] {
+    const idx = (y * this.width + x) * 4;
+    return [
+      this.data[idx + 0] as number,
+      this.data[idx + 1] as number,
+      this.data[idx + 2] as number,
+      this.data[idx + 3] as number,
+    ];
+  }
+
+  setPixel(x: number, y: number, color: [number, number, number, number]): void {
+    const idx = (y * this.width + x) * 4;
+    this.data[idx + 0] = color[0];
+    this.data[idx + 1] = color[1];
+    this.data[idx + 2] = color[2];
+    this.data[idx + 3] = color[3];
+  }
+}
+
+/**
+ * Tone-mapping stage：对 input texture 每个像素应用 applyToneMapping，写入 output。
+ * 当 renderer 存在时，记录 GPU draw call；不存在时仅在 CPU 代理上做处理。
+ */
+export class ToneMappingStage implements PostProcessingStage {
+  readonly name = 'tone-mapping';
+  private params: ToneMappingParams;
+
+  constructor(params: ToneMappingParams = DEFAULT_TONE_MAPPING) {
+    this.params = { ...params };
+  }
+
+  getParams(): ToneMappingParams {
+    return { ...this.params };
+  }
+
+  setParams(params: Partial<ToneMappingParams>): void {
+    this.params = { ...this.params, ...params };
+  }
+
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void {
+    if (input instanceof CPUTextureProxy && output instanceof CPUTextureProxy) {
+      const inTex = input;
+      const outTex = output;
+      for (let y = 0; y < inTex.height; y++) {
+        for (let x = 0; x < inTex.width; x++) {
+          const px = inTex.getPixel(x, y);
+          const mapped = applyToneMapping([px[0], px[1], px[2]], this.params);
+          outTex.setPixel(x, y, [mapped[0], mapped[1], mapped[2], px[3]]);
+        }
+      }
+    }
+    if (renderer) {
+      // Real GPU path: would bind a fullscreen triangle pipeline and sample input.
+      // Skeleton: issue a placeholder draw to indicate intent.
+      renderer.beginPass({
+        colorAttachments: [
+          {
+            texture: { id: output.id, format: output.format },
+            loadOp: 'clear',
+            storeOp: 'store',
+            clear: [0, 0, 0, 1],
+          },
+        ],
+      });
+      renderer.draw({
+        vertexBuffer: { id: 'pp-fullscreen-quad', usage: 'static' },
+        pipeline: { id: 'pp-tonemap' },
+        vertexCount: 3,
+      });
+      renderer.endPass();
+    }
+  }
+}
+
+/**
+ * 亮度提取 stage（用于 bloom 的输入）：提取亮度高于 threshold 的部分。
+ */
+export class LuminanceExtractionStage implements PostProcessingStage {
+  readonly name = 'luminance-extraction';
+  private threshold: number;
+  private softKnee: number;
+
+  constructor(threshold: number = 1.0, softKnee: number = 0.5) {
+    this.threshold = threshold;
+    this.softKnee = softKnee;
+  }
+
+  getThreshold(): number {
+    return this.threshold;
+  }
+
+  setThreshold(value: number): void {
+    this.threshold = value;
+  }
+
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void {
+    if (input instanceof CPUTextureProxy && output instanceof CPUTextureProxy) {
+      const inTex = input;
+      const outTex = output;
+      for (let y = 0; y < inTex.height; y++) {
+        for (let x = 0; x < inTex.width; x++) {
+          const px = inTex.getPixel(x, y);
+          const extracted = computeBloomThreshold(
+            [px[0], px[1], px[2]],
+            this.threshold,
+            this.softKnee,
+          );
+          outTex.setPixel(x, y, [extracted[0], extracted[1], extracted[2], px[3]]);
+        }
+      }
+    }
+    if (renderer) {
+      renderer.beginPass({
+        colorAttachments: [
+          {
+            texture: { id: output.id, format: output.format },
+            loadOp: 'clear',
+            storeOp: 'store',
+            clear: [0, 0, 0, 1],
+          },
+        ],
+      });
+      renderer.draw({
+        vertexBuffer: { id: 'pp-fullscreen-quad', usage: 'static' },
+        pipeline: { id: 'pp-luminance-extract' },
+        vertexCount: 3,
+      });
+      renderer.endPass();
+    }
+  }
+}
+
+/**
+ * Bloom 下采样 stage：把高分辨率纹理降采样到低分辨率（每级缩小一半）。
+ */
+export class BloomDownsampleStage implements PostProcessingStage {
+  readonly name = 'bloom-downsample';
+  private iterations: number;
+
+  constructor(iterations: number = 4) {
+    this.iterations = iterations;
+  }
+
+  getIterations(): number {
+    return this.iterations;
+  }
+
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void {
+    if (input instanceof CPUTextureProxy && output instanceof CPUTextureProxy) {
+      const inTex = input;
+      const outTex = output;
+      const stepX = Math.max(1, Math.floor(inTex.width / outTex.width));
+      const stepY = Math.max(1, Math.floor(inTex.height / outTex.height));
+      for (let y = 0; y < outTex.height; y++) {
+        for (let x = 0; x < outTex.width; x++) {
+          const srcX = Math.min(inTex.width - 1, x * stepX);
+          const srcY = Math.min(inTex.height - 1, y * stepY);
+          const px = inTex.getPixel(srcX, srcY);
+          outTex.setPixel(x, y, [px[0], px[1], px[2], px[3]]);
+        }
+      }
+    }
+    if (renderer) {
+      renderer.beginPass({
+        colorAttachments: [
+          {
+            texture: { id: output.id, format: output.format },
+            loadOp: 'clear',
+            storeOp: 'store',
+            clear: [0, 0, 0, 1],
+          },
+        ],
+      });
+      renderer.draw({
+        vertexBuffer: { id: 'pp-fullscreen-quad', usage: 'static' },
+        pipeline: { id: 'pp-bloom-downsample' },
+        vertexCount: 3,
+      });
+      renderer.endPass();
+    }
+  }
+}
+
+/**
+ * Bloom 上采样 stage：把低分辨率纹理升采样并叠加到高分辨率。
+ */
+export class BloomUpsampleStage implements PostProcessingStage {
+  readonly name = 'bloom-upsample';
+  private intensity: number;
+
+  constructor(intensity: number = 0.5) {
+    this.intensity = intensity;
+  }
+
+  getIntensity(): number {
+    return this.intensity;
+  }
+
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void {
+    if (input instanceof CPUTextureProxy && output instanceof CPUTextureProxy) {
+      const inTex = input;
+      const outTex = output;
+      for (let y = 0; y < outTex.height; y++) {
+        for (let x = 0; x < outTex.width; x++) {
+          const srcX = Math.min(inTex.width - 1, Math.floor((x * inTex.width) / outTex.width));
+          const srcY = Math.min(inTex.height - 1, Math.floor((y * inTex.height) / outTex.height));
+          const px = inTex.getPixel(srcX, srcY);
+          const existing = outTex.getPixel(x, y);
+          outTex.setPixel(x, y, [
+            existing[0] + px[0] * this.intensity,
+            existing[1] + px[1] * this.intensity,
+            existing[2] + px[2] * this.intensity,
+            existing[3],
+          ]);
+        }
+      }
+    }
+    if (renderer) {
+      renderer.beginPass({
+        colorAttachments: [
+          {
+            texture: { id: output.id, format: output.format },
+            loadOp: 'load',
+            storeOp: 'store',
+          },
+        ],
+      });
+      renderer.draw({
+        vertexBuffer: { id: 'pp-fullscreen-quad', usage: 'static' },
+        pipeline: { id: 'pp-bloom-upsample' },
+        vertexCount: 3,
+      });
+      renderer.endPass();
+    }
+  }
+}
+
+/**
+ * 颜色分级 stage：对每个像素应用 applyColorGrading。
+ */
+export class ColorGradingStage implements PostProcessingStage {
+  readonly name = 'color-grading';
+  private params: ColorGradingParams;
+
+  constructor(params: ColorGradingParams = DEFAULT_COLOR_GRADING) {
+    this.params = { ...params };
+  }
+
+  getParams(): ColorGradingParams {
+    return {
+      ...this.params,
+      shadows: { ...this.params.shadows },
+      midtones: { ...this.params.midtones },
+      highlights: { ...this.params.highlights },
+    };
+  }
+
+  setParams(params: Partial<ColorGradingParams>): void {
+    this.params = {
+      ...this.params,
+      ...params,
+      shadows: params.shadows ? { ...params.shadows } : this.params.shadows,
+      midtones: params.midtones ? { ...params.midtones } : this.params.midtones,
+      highlights: params.highlights ? { ...params.highlights } : this.params.highlights,
+    };
+  }
+
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void {
+    if (input instanceof CPUTextureProxy && output instanceof CPUTextureProxy) {
+      const inTex = input;
+      const outTex = output;
+      for (let y = 0; y < inTex.height; y++) {
+        for (let x = 0; x < inTex.width; x++) {
+          const px = inTex.getPixel(x, y);
+          const graded = applyColorGrading([px[0], px[1], px[2]], this.params);
+          outTex.setPixel(x, y, [graded[0], graded[1], graded[2], px[3]]);
+        }
+      }
+    }
+    if (renderer) {
+      renderer.beginPass({
+        colorAttachments: [
+          {
+            texture: { id: output.id, format: output.format },
+            loadOp: 'clear',
+            storeOp: 'store',
+            clear: [0, 0, 0, 1],
+          },
+        ],
+      });
+      renderer.draw({
+        vertexBuffer: { id: 'pp-fullscreen-quad', usage: 'static' },
+        pipeline: { id: 'pp-color-grading' },
+        vertexCount: 3,
+      });
+      renderer.endPass();
+    }
+  }
+}
+
+/**
+ * 暗角 stage：对每个像素应用 applyVignette。
+ */
+export class VignetteStage implements PostProcessingStage {
+  readonly name = 'vignette';
+  private params: VignetteParams;
+
+  constructor(params: VignetteParams = DEFAULT_VIGNETTE) {
+    this.params = { ...params, color: [...params.color] as [number, number, number] };
+  }
+
+  getParams(): VignetteParams {
+    return {
+      ...this.params,
+      color: [...this.params.color] as [number, number, number],
+    };
+  }
+
+  setParams(params: Partial<VignetteParams>): void {
+    this.params = {
+      ...this.params,
+      ...params,
+      color: params.color ? [...params.color] as [number, number, number] : this.params.color,
+    };
+  }
+
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void {
+    if (input instanceof CPUTextureProxy && output instanceof CPUTextureProxy) {
+      const inTex = input;
+      const outTex = output;
+      for (let y = 0; y < inTex.height; y++) {
+        for (let x = 0; x < inTex.width; x++) {
+          const px = inTex.getPixel(x, y);
+          const uv: [number, number] = [
+            (x + 0.5) / inTex.width,
+            (y + 0.5) / inTex.height,
+          ];
+          const result = applyVignette([px[0], px[1], px[2]], uv, this.params);
+          outTex.setPixel(x, y, [result[0], result[1], result[2], px[3]]);
+        }
+      }
+    }
+    if (renderer) {
+      renderer.beginPass({
+        colorAttachments: [
+          {
+            texture: { id: output.id, format: output.format },
+            loadOp: 'clear',
+            storeOp: 'store',
+            clear: [0, 0, 0, 1],
+          },
+        ],
+      });
+      renderer.draw({
+        vertexBuffer: { id: 'pp-fullscreen-quad', usage: 'static' },
+        pipeline: { id: 'pp-vignette' },
+        vertexCount: 3,
+      });
+      renderer.endPass();
+    }
+  }
+}
+
+/**
+ * 后处理管线实现：维护 stages 列表，依次执行 render()。
+ * stage 之间通过交替使用两张中间纹理 ping-pong；最后一步写入 output。
+ */
+export class PostProcessingPipelineImpl implements PostProcessingPipeline {
+  private stages: PostProcessingStage[] = [];
+  private intermediateA: CPUTextureProxy | null = null;
+  private intermediateB: CPUTextureProxy | null = null;
+  private disposed = false;
+
+  addStage(stage: PostProcessingStage): void {
+    this.stages.push(stage);
+  }
+
+  removeStage(name: string): void {
+    this.stages = this.stages.filter((s) => s.name !== name);
+  }
+
+  getStages(): PostProcessingStage[] {
+    return [...this.stages];
+  }
+
+  clearStages(): void {
+    this.stages = [];
+  }
+
+  render(
+    input: PostProcessingTexture,
+    output: PostProcessingTexture,
+    renderer: PostProcessingRenderer | null,
+  ): void {
+    if (this.disposed) {
+      throw new Error('PostProcessingPipeline has been disposed');
+    }
+    if (this.stages.length === 0) {
+      // No stages: copy input to output (CPU path only).
+      if (input instanceof CPUTextureProxy && output instanceof CPUTextureProxy) {
+        output.data.set(input.data);
+      }
+      return;
+    }
+
+    // For CPU path, allocate intermediate buffers matching input dimensions.
+    const useCpu = input instanceof CPUTextureProxy && output instanceof CPUTextureProxy;
+    if (useCpu) {
+      const cpuInput = input as CPUTextureProxy;
+      if (
+        !this.intermediateA ||
+        this.intermediateA.width !== cpuInput.width ||
+        this.intermediateA.height !== cpuInput.height
+      ) {
+        this.intermediateA = new CPUTextureProxy(
+          'pp-intermediate-a',
+          cpuInput.width,
+          cpuInput.height,
+          cpuInput.format,
+        );
+        this.intermediateB = new CPUTextureProxy(
+          'pp-intermediate-b',
+          cpuInput.width,
+          cpuInput.height,
+          cpuInput.format,
+        );
+      }
+    }
+
+    let current: PostProcessingTexture = input;
+    for (let i = 0; i < this.stages.length; i++) {
+      const stage = this.stages[i] as PostProcessingStage;
+      const isLast = i === this.stages.length - 1;
+      const next: PostProcessingTexture = isLast
+        ? output
+        : (current === this.intermediateA ? this.intermediateB! : this.intermediateA!);
+      stage.render(current, next, renderer);
+      current = next;
+    }
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.stages = [];
+    this.intermediateA = null;
+    this.intermediateB = null;
+  }
+}
+
+/**
+ * 工厂函数：从 PostProcessingParams 构建一条完整的默认管线。
+ */
+export function createDefaultPipeline(params: PostProcessingParams = DEFAULT_POST_PROCESSING): PostProcessingPipeline {
+  const pipeline = new PostProcessingPipelineImpl();
+  if (params.bloom.enabled) {
+    pipeline.addStage(new LuminanceExtractionStage(params.bloom.threshold, params.bloom.softKnee));
+    pipeline.addStage(new BloomDownsampleStage(params.bloom.iterations));
+    pipeline.addStage(new BloomUpsampleStage(params.bloom.intensity));
+  }
+  pipeline.addStage(new ToneMappingStage(params.toneMapping));
+  pipeline.addStage(new ColorGradingStage(params.colorGrading));
+  if (params.vignette.enabled) {
+    pipeline.addStage(new VignetteStage(params.vignette));
+  }
+  return pipeline;
 }

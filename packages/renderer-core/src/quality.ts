@@ -419,3 +419,188 @@ export function getRecommendedShadowResolution(level: QualityLevel): number {
 export function getRecommendedParticleCount(level: QualityLevel): number {
   return QUALITY_PRESETS[level].particleCount;
 }
+
+// ============================================================================
+// E-08: Quality auto-loop
+// ============================================================================
+
+/**
+ * QualityApplier: 把画质变更应用到渲染后端。
+ * 实现类需要把这些值真正下发给 GPU pipeline / material。
+ */
+export interface QualityApplier {
+  setTextureResolution(n: number): void;
+  setShadowResolution(n: number): void;
+}
+
+/**
+ * 画质变更动作：degrade 降级、upgrade 升级，目标 profile 由 newProfile 指定。
+ */
+export type QualityAction = {
+  type: 'degrade' | 'upgrade';
+  newProfile: QualityLevel;
+};
+
+/**
+ * 把一个 QualityAction 应用到 applier。会同时下发纹理与阴影分辨率。
+ */
+export function applyQualityAction(action: QualityAction, applier: QualityApplier): void {
+  applier.setTextureResolution(getRecommendedTextureSize(action.newProfile));
+  applier.setShadowResolution(getRecommendedShadowResolution(action.newProfile));
+}
+
+/**
+ * 简单的 QualityApplier 实现：保存最后一次设置的值，用于测试。
+ */
+export class DefaultQualityApplier implements QualityApplier {
+  private textureResolution = 1024;
+  private shadowResolution = 1024;
+
+  setTextureResolution(n: number): void {
+    this.textureResolution = n;
+  }
+
+  setShadowResolution(n: number): void {
+    this.shadowResolution = n;
+  }
+
+  getTextureResolution(): number {
+    return this.textureResolution;
+  }
+
+  getShadowResolution(): number {
+    return this.shadowResolution;
+  }
+}
+
+/**
+ * QualityController: 自动画质闭环控制器。
+ *
+ * 维护一个滞回计数器（默认 10）：连续 degradationThreshold 次满足降级条件则触发降级；
+ * 连续 upgradeThreshold 次满足升级条件则触发升级。
+ * 触发后通过 onQualityChange 回调通知调用方。
+ */
+export class QualityController {
+  private currentProfile: QualityLevel;
+  private monitor: PerformanceMonitor;
+  private degradationThreshold: number;
+  private upgradeThreshold: number;
+  private hysteresisCount = 10;
+  private degradeCounter = 0;
+  private upgradeCounter = 0;
+  private callbacks: Array<(action: QualityAction) => void> = [];
+  private readonly levels: QualityLevel[] = ['low', 'medium', 'high', 'ultra'];
+
+  constructor(
+    initialProfile: QualityLevel = 'high',
+    monitor?: PerformanceMonitor,
+    degradationThreshold: number = 30,
+    upgradeThreshold: number = 55,
+    hysteresisCount: number = 10,
+  ) {
+    this.currentProfile = initialProfile;
+    this.monitor = monitor ?? new PerformanceMonitor();
+    this.degradationThreshold = degradationThreshold;
+    this.upgradeThreshold = upgradeThreshold;
+    this.hysteresisCount = hysteresisCount;
+  }
+
+  /**
+   * 注册回调：当画质发生变更（升级或降级）时调用。
+   */
+  onQualityChange(cb: (action: QualityAction) => void): () => void {
+    this.callbacks.push(cb);
+    return () => {
+      const idx = this.callbacks.indexOf(cb);
+      if (idx >= 0) {
+        this.callbacks.splice(idx, 1);
+      }
+    };
+  }
+
+  /**
+   * 基于当前 monitor 的 fps 触发降级或升级。
+   * 使用滞回计数器，连续 N 次满足条件才触发。
+   */
+  update(): QualityAction | null {
+    const metrics = this.monitor.getMetrics();
+    const fps = metrics.fps;
+    let action: QualityAction | null = null;
+
+    if (fps < this.degradationThreshold && this.currentProfile !== 'low') {
+      this.degradeCounter++;
+      this.upgradeCounter = 0;
+      if (this.degradeCounter >= this.hysteresisCount) {
+        const newProfile = this.lowerNeighbor(this.currentProfile);
+        if (newProfile) {
+          action = { type: 'degrade', newProfile };
+          this.currentProfile = newProfile;
+          this.notify(action);
+        }
+        this.degradeCounter = 0;
+      }
+    } else if (fps > this.upgradeThreshold && this.currentProfile !== 'ultra') {
+      this.upgradeCounter++;
+      this.degradeCounter = 0;
+      if (this.upgradeCounter >= this.hysteresisCount) {
+        const newProfile = this.higherNeighbor(this.currentProfile);
+        if (newProfile) {
+          action = { type: 'upgrade', newProfile };
+          this.currentProfile = newProfile;
+          this.notify(action);
+        }
+        this.upgradeCounter = 0;
+      }
+    } else {
+      // 中间区间：重置两个计数器（滞回消抖）
+      this.degradeCounter = 0;
+      this.upgradeCounter = 0;
+    }
+
+    return action;
+  }
+
+  setProfile(profile: QualityLevel): void {
+    this.currentProfile = profile;
+    this.degradeCounter = 0;
+    this.upgradeCounter = 0;
+  }
+
+  getCurrentProfile(): QualityLevel {
+    return this.currentProfile;
+  }
+
+  getMonitor(): PerformanceMonitor {
+    return this.monitor;
+  }
+
+  getDegradeCounter(): number {
+    return this.degradeCounter;
+  }
+
+  getUpgradeCounter(): number {
+    return this.upgradeCounter;
+  }
+
+  getHysteresisCount(): number {
+    return this.hysteresisCount;
+  }
+
+  private lowerNeighbor(level: QualityLevel): QualityLevel | null {
+    const idx = this.levels.indexOf(level);
+    if (idx <= 0) return null;
+    return this.levels[idx - 1] ?? null;
+  }
+
+  private higherNeighbor(level: QualityLevel): QualityLevel | null {
+    const idx = this.levels.indexOf(level);
+    if (idx < 0 || idx >= this.levels.length - 1) return null;
+    return this.levels[idx + 1] ?? null;
+  }
+
+  private notify(action: QualityAction): void {
+    for (const cb of this.callbacks) {
+      cb(action);
+    }
+  }
+}

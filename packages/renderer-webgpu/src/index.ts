@@ -15,8 +15,155 @@ import {
   type DrawCall,
   type BackendType,
   type RendererFactory,
+  type PrimitiveType,
   registerRendererFactory,
 } from '@solar-system/renderer-core';
+
+/**
+ * 计算给定像素格式每个像素占用的字节数。
+ * 覆盖 WebGPU 常见的 unorm/snorm/float/uint/sint 格式。
+ */
+export function bytesPerPixel(format: string): number {
+  switch (format) {
+    case 'r8unorm':
+    case 'r8snorm':
+    case 'r8uint':
+    case 'r8sint':
+      return 1;
+    case 'rg8unorm':
+    case 'rg8snorm':
+    case 'rg8uint':
+    case 'rg8sint':
+    case 'r16uint':
+    case 'r16sint':
+    case 'r16float':
+      return 2;
+    case 'rgba8unorm':
+    case 'rgba8unorm-srgb':
+    case 'rgba8snorm':
+    case 'rgba8uint':
+    case 'rgba8sint':
+    case 'bgra8unorm':
+    case 'bgra8unorm-srgb':
+      return 4;
+    case 'rgba16uint':
+    case 'rgba16sint':
+    case 'rgba16float':
+      return 8;
+    case 'rgba32uint':
+    case 'rgba32sint':
+    case 'rgba32float':
+      return 16;
+    default:
+      return 4;
+  }
+}
+
+/**
+ * 将 value 向上对齐到 alignment 的最小倍数。
+ * WebGPU 要求 writeTexture 的 bytesPerRow 对齐到 256。
+ */
+export function alignTo(value: number, alignment: number): number {
+  return Math.ceil(value / alignment) * alignment;
+}
+
+/**
+ * 将统一渲染层的 PrimitiveType 映射到 WebGPU GPUPrimitiveTopology 字符串。
+ * 覆盖 points/lines/line_strip/triangles/triangle_strip 完整拓扑集合。
+ */
+export function mapPrimitiveTopology(topology: PrimitiveType): string {
+  switch (topology) {
+    case 'points':
+      return 'point-list';
+    case 'lines':
+      return 'line-list';
+    case 'line_strip':
+      return 'line-strip';
+    case 'triangles':
+      return 'triangle-list';
+    case 'triangle_strip':
+      return 'triangle-strip';
+    default:
+      return 'triangle-list';
+  }
+}
+
+/** 设备丢失时由 device.lost 回调传入的 info 结构。 */
+export interface DeviceLostInfo {
+  reason: string;
+  message: string;
+}
+
+/**
+ * WebGPU GPUBufferUsage 本地副本常量。
+ * 仅在 globalThis.GPUBufferUsage 不可用时（如 Node 测试环境无 WebGPU 运行时）作为回退使用。
+ * 值与 WebGPU 规范定义的 GPUBufferUsage 命名常量一致。
+ */
+const GPU_BUFFER_USAGE = {
+  MAP_READ: 1,
+  MAP_WRITE: 2,
+  COPY_SRC: 4,
+  COPY_DST: 8,
+  INDEX: 16,
+  VERTEX: 32,
+  STORAGE: 64,
+  INDIRECT: 128,
+  QUERY_RESOLVE: 256,
+};
+
+/**
+ * WebGPU GPUTextureUsage 本地副本常量。
+ * 仅在 globalThis.GPUTextureUsage 不可用时（如 Node 测试环境无 WebGPU 运行时）作为回退使用。
+ * 值与 WebGPU 规范定义的 GPUTextureUsage 命名常量一致。
+ */
+const GPU_TEXTURE_USAGE = {
+  COPY_SRC: 1,
+  COPY_DST: 2,
+  TEXTURE_BINDING: 4,
+  STORAGE_BINDING: 8,
+  RENDER_ATTACHMENT: 16,
+};
+
+interface BufferUsageConstants {
+  readonly MAP_READ: number;
+  readonly MAP_WRITE: number;
+  readonly COPY_SRC: number;
+  readonly COPY_DST: number;
+  readonly INDEX: number;
+  readonly VERTEX: number;
+  readonly STORAGE: number;
+  readonly INDIRECT: number;
+  readonly QUERY_RESOLVE: number;
+}
+
+interface TextureUsageConstants {
+  readonly COPY_SRC: number;
+  readonly COPY_DST: number;
+  readonly TEXTURE_BINDING: number;
+  readonly STORAGE_BINDING: number;
+  readonly RENDER_ATTACHMENT: number;
+}
+
+interface GlobalWithWebGPU {
+  GPUBufferUsage?: BufferUsageConstants;
+  GPUTextureUsage?: TextureUsageConstants;
+}
+
+/**
+ * 获取 WebGPU buffer usage 常量：优先使用官方 globalThis.GPUBufferUsage 命名空间，
+ * 缺省时回退到本地副本（Node 环境无 WebGPU 运行时）。
+ */
+export function getBufferUsage(): BufferUsageConstants {
+  return (globalThis as unknown as GlobalWithWebGPU).GPUBufferUsage ?? GPU_BUFFER_USAGE;
+}
+
+/**
+ * 获取 WebGPU texture usage 常量：优先使用官方 globalThis.GPUTextureUsage 命名空间，
+ * 缺省时回退到本地副本（Node 环境无 WebGPU 运行时）。
+ */
+export function getTextureUsage(): TextureUsageConstants {
+  return (globalThis as unknown as GlobalWithWebGPU).GPUTextureUsage ?? GPU_TEXTURE_USAGE;
+}
 
 class WebGpuRenderer implements Renderer {
   readonly backend: BackendType = 'webgpu';
@@ -25,12 +172,28 @@ class WebGpuRenderer implements Renderer {
   private device: unknown = null;
   private context: unknown = null;
   private presentationFormat: string = 'rgba8unorm';
+  private canvas: HTMLCanvasElement | null = null;
+  private gpu: {
+    requestAdapter(options?: unknown): Promise<unknown | null>;
+    getPreferredCanvasFormat?: () => string;
+  } | null = null;
 
   private buffers = new Map<string, unknown>();
   private textures = new Map<string, unknown>();
   private pipelines = new Map<string, unknown>();
 
   private currentPass: unknown = null;
+
+  private currentCommandEncoder: unknown = null;
+  private pendingCommandBuffers: unknown[] = [];
+  private textureMetadata = new Map<string, { width: number; height: number; format: string }>();
+
+  /** 设备丢失标志，由 device.lost 回调置位。 */
+  private deviceLost = false;
+  /** 重建需求标志，外部轮询后在重建完成后通过 clearRebuildFlag 清除。 */
+  private rebuildRequired = false;
+  /** 用户注册的设备丢失回调（可选）。 */
+  onDeviceLost: ((info: DeviceLostInfo) => void) | null = null;
 
   constructor() {
     this.capabilities = {
@@ -50,20 +213,41 @@ class WebGpuRenderer implements Renderer {
       throw new Error('WebGPU is not supported');
     }
 
-    const gpu = navigator.gpu as unknown as {
+    this.gpu = navigator.gpu as unknown as {
       requestAdapter(options?: unknown): Promise<unknown | null>;
       getPreferredCanvasFormat?: () => string;
     };
+    this.canvas = canvas;
 
-    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    const adapter = await this.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) {
       throw new Error('Failed to get WebGPU adapter');
     }
 
-    this.device = await (adapter as unknown as { requestDevice(): Promise<unknown> }).requestDevice();
-    this.context = canvas.getContext('webgpu');
-    this.presentationFormat = gpu.getPreferredCanvasFormat?.() ?? 'rgba8unorm';
+    await this.acquireDevice(adapter);
+  }
 
+  /**
+   * 内部：从 adapter 获取 device、注册 device.lost 监听、配置 canvas context、读取 adapter limits。
+   * init() 与 reinit() 共享该流程。
+   */
+  private async acquireDevice(adapter: unknown): Promise<void> {
+    const device = await (adapter as unknown as { requestDevice(): Promise<unknown> }).requestDevice();
+    this.device = device;
+    this.deviceLost = false;
+
+    // 注册 device.lost 监听：WebGPU 规范要求 lost 是一个 Promise<DeviceLostInfo>
+    const lost = (device as unknown as { lost?: Promise<DeviceLostInfo> }).lost;
+    if (lost) {
+      lost.then((info: DeviceLostInfo) => this.handleDeviceLost(info));
+    }
+
+    if (this.canvas && !this.context) {
+      this.context = this.canvas.getContext('webgpu');
+    }
+    if (this.gpu) {
+      this.presentationFormat = this.gpu.getPreferredCanvasFormat?.() ?? 'rgba8unorm';
+    }
     if (this.context) {
       (this.context as unknown as { configure(config: unknown): void }).configure({
         device: this.device,
@@ -85,6 +269,65 @@ class WebGpuRenderer implements Renderer {
     };
   }
 
+  /**
+   * 设备丢失回调：标记 deviceLost + rebuildRequired，销毁所有 GPU 资源，触发用户回调。
+   */
+  handleDeviceLost(info: DeviceLostInfo): void {
+    this.deviceLost = true;
+    this.rebuildRequired = true;
+
+    // 销毁所有 GPU 资源（device 已丢失，资源句柄不可再用）
+    this.buffers.forEach((buf) => (buf as unknown as { destroy?: () => void }).destroy?.());
+    this.textures.forEach((tex) => (tex as unknown as { destroy?: () => void }).destroy?.());
+    this.pipelines.forEach((pipe) => (pipe as unknown as { destroy?: () => void }).destroy?.());
+    this.buffers.clear();
+    this.textures.clear();
+    this.pipelines.clear();
+    this.textureMetadata.clear();
+
+    this.device = null;
+
+    if (this.onDeviceLost) {
+      this.onDeviceLost(info);
+    }
+  }
+
+  /**
+   * 重新初始化：重新 requestAdapter + requestDevice + context.configure。
+   * 通常在 handleDeviceLost 触发后由外部调用以恢复渲染。
+   */
+  async reinit(): Promise<void> {
+    if (!this.gpu) {
+      throw new Error('Renderer not initialized');
+    }
+    if (!this.canvas) {
+      throw new Error('Renderer not initialized');
+    }
+
+    const adapter = await this.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) {
+      throw new Error('Failed to get WebGPU adapter');
+    }
+
+    await this.acquireDevice(adapter);
+    this.rebuildRequired = false;
+  }
+
+  /** 当前设备是否处于丢失状态。 */
+  isDeviceLost(): boolean {
+    return this.deviceLost;
+  }
+
+  /** 是否需要重建（设备丢失后置位，由外部在重建流程结束后调用 clearRebuildFlag 清除）。 */
+  isRebuildRequired(): boolean {
+    return this.rebuildRequired;
+  }
+
+  /** 清除重建标志（外部完成重建流程后调用）。 */
+  clearRebuildFlag(): void {
+    this.rebuildRequired = false;
+  }
+
   destroy(): void {
     this.buffers.forEach((buf) => (buf as unknown as { destroy: () => void }).destroy?.());
     this.textures.forEach((tex) => (tex as unknown as { destroy: () => void }).destroy?.());
@@ -93,10 +336,15 @@ class WebGpuRenderer implements Renderer {
     this.buffers.clear();
     this.textures.clear();
     this.pipelines.clear();
+    this.textureMetadata.clear();
 
     (this.device as unknown as { destroy: () => void })?.destroy?.();
     this.device = null;
     this.context = null;
+    this.canvas = null;
+    this.gpu = null;
+    this.deviceLost = false;
+    this.rebuildRequired = false;
   }
 
   resize(width: number, height: number): void {
@@ -114,7 +362,7 @@ class WebGpuRenderer implements Renderer {
 
     const buffer = createBuffer({
       size: desc.size,
-      usage: desc.usage === 'dynamic' ? 12 : 8,
+      usage: desc.usage === 'dynamic' ? getBufferUsage().COPY_SRC | getBufferUsage().COPY_DST : getBufferUsage().COPY_DST,
       mappedAtCreation: !!desc.data,
     });
 
@@ -159,11 +407,15 @@ class WebGpuRenderer implements Renderer {
     const texture = createTexture({
       size: { width: desc.width, height: desc.height },
       format: desc.format,
-      usage: desc.usage === 'render_target' ? 24 : 18,
+      usage:
+        desc.usage === 'render_target'
+          ? getTextureUsage().STORAGE_BINDING | getTextureUsage().RENDER_ATTACHMENT
+          : getTextureUsage().COPY_DST | getTextureUsage().RENDER_ATTACHMENT,
       mipLevelCount: desc.mipmap ? Math.floor(Math.log2(Math.max(desc.width, desc.height))) + 1 : 1,
     });
 
     this.textures.set(id, texture);
+    this.textureMetadata.set(id, { width: desc.width, height: desc.height, format: desc.format });
     return { id, format: desc.format };
   }
 
@@ -173,12 +425,17 @@ class WebGpuRenderer implements Renderer {
     const texture = this.textures.get(handle.id);
     if (!texture) throw new Error(`Texture not found: ${handle.id}`);
 
+    const meta = this.textureMetadata.get(handle.id);
+    if (!meta) throw new Error(`Texture metadata not found: ${handle.id}`);
+
+    const bytesPerRow = alignTo(meta.width * bytesPerPixel(meta.format), 256);
+
     const queue = (this.device as unknown as { queue: unknown }).queue;
     (queue as unknown as { writeTexture(config: unknown, data: ArrayBufferView, layout: unknown, size: unknown): void }).writeTexture(
       { texture },
       data,
-      { bytesPerRow: handle.format === 'rgba8unorm' ? handle.id.length * 4 : 0 },
-      { width: (texture as unknown as { width: number }).width, height: (texture as unknown as { height: number }).height },
+      { bytesPerRow },
+      { width: meta.width, height: meta.height },
     );
   }
 
@@ -187,6 +444,7 @@ class WebGpuRenderer implements Renderer {
     if (texture) {
       (texture as unknown as { destroy: () => void }).destroy?.();
       this.textures.delete(handle.id);
+      this.textureMetadata.delete(handle.id);
     }
   }
 
@@ -203,9 +461,9 @@ class WebGpuRenderer implements Renderer {
           code: desc.vertexShader.source,
         }),
         entryPoint: desc.vertexShader.entryPoint ?? 'main',
-        buffers: desc.vertexAttributes.map((attr) => ({
+        buffers: desc.vertexAttributes.map((attr, i) => ({
           arrayStride: attr.stride,
-          attributes: [{ shaderLocation: 0, offset: attr.offset, format: attr.format }],
+          attributes: [{ shaderLocation: i, offset: attr.offset, format: attr.format }],
         })),
       },
       fragment: {
@@ -216,8 +474,8 @@ class WebGpuRenderer implements Renderer {
         targets: [{ format: this.presentationFormat }],
       },
       primitive: {
-        topology: desc.topology === 'triangles' ? 'triangle-list' : 'triangle-list',
-        cullMode: desc.cullMode === 'back' ? 'back' : desc.cullMode === 'front' ? 'front' : undefined,
+        topology: mapPrimitiveTopology(desc.topology),
+        cullMode: desc.cullMode ?? 'none',
       },
       depthStencil: desc.depthTest
         ? {
@@ -256,6 +514,7 @@ class WebGpuRenderer implements Renderer {
     });
 
     const commandEncoder = (this.device as unknown as { createCommandEncoder(): unknown }).createCommandEncoder();
+    this.currentCommandEncoder = commandEncoder;
     this.currentPass = (commandEncoder as unknown as { beginRenderPass(config: unknown): unknown }).beginRenderPass({
       colorAttachments,
     });
@@ -294,12 +553,18 @@ class WebGpuRenderer implements Renderer {
       (this.currentPass as unknown as { end(): void }).end();
       this.currentPass = null;
     }
+    if (this.currentCommandEncoder) {
+      const cmdBuffer = (this.currentCommandEncoder as unknown as { finish(): unknown }).finish();
+      this.pendingCommandBuffers.push(cmdBuffer);
+      this.currentCommandEncoder = null;
+    }
   }
 
   submit(): void {
     if (!this.device) throw new Error('Renderer not initialized');
     const queue = (this.device as unknown as { queue: unknown }).queue;
-    (queue as unknown as { submit(commands: unknown[]): void }).submit([]);
+    (queue as unknown as { submit(commands: unknown[]): void }).submit(this.pendingCommandBuffers);
+    this.pendingCommandBuffers = [];
   }
 
   async readPixels(
@@ -317,7 +582,7 @@ class WebGpuRenderer implements Renderer {
     const createBuffer = (this.device as unknown as { createBuffer(config: unknown): unknown }).createBuffer;
     const buffer = createBuffer({
       size: width * height * 4,
-      usage: 1,
+      usage: getBufferUsage().MAP_READ,
     });
 
     const commandEncoder = (this.device as unknown as { createCommandEncoder(): unknown }).createCommandEncoder();

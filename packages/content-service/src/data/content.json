@@ -1,0 +1,683 @@
+{
+  "10": {
+    "bodyId": 10,
+    "basicParams": {
+      "size": "半径约 695,700 公里",
+      "massOrGm": "1.3271244×10^20 km³/s²",
+      "density": "1.408 g/cm³",
+      "gravity": "274 m/s²",
+      "temperatureRange": "中心约 1.57×10^7 K，表面约 5,778 K",
+      "orbitalPeriod": "银河年约 2.25 亿年",
+      "rotationPeriod": "约 25.4 地球日（赤道），约 35 地球日（极区）",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "太阳是太阳系的中心天体，是一颗黄矮星。它占据了太阳系总质量的约 99.86%，为地球和其他行星提供光和热。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "structure",
+        "titleZh": "内部结构",
+        "bodyZh": "太阳由核心、辐射层、对流层、光球层、色球层和日冕组成。核心是核聚变发生的地方，温度高达 1500 万度。",
+        "realityTier": "R3"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气层",
+        "bodyZh": "光球层是我们看到的太阳表面，温度约 5800K。色球层是一层稀薄的气体层，日冕是太阳的外层大气，温度可达数百万度。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "activity",
+        "titleZh": "太阳活动",
+        "bodyZh": "太阳活动包括黑子、耀斑、日珥和日冕物质抛射。这些活动会影响地球的磁场和大气层，引发极光和地磁暴。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "lifeCycle",
+        "titleZh": "生命周期",
+        "bodyZh": "太阳目前处于主序星阶段，年龄约 46 亿年，预计还将继续燃烧约 50 亿年，之后将演变为红巨星，最终成为白矮星。",
+        "realityTier": "R3"
+      }
+    ],
+    "sources": ["NASA", "ESA", "IAU"],
+    "proceduralAppearanceNote": "太阳表面采用光球层湍流纹理程序化合成，叠加黑子分布与日冕粒子；非真实纹理图，仅用于影视级呈现"
+  },
+  "199": {
+    "bodyId": 199,
+    "basicParams": {
+      "size": "半径约 2,440 公里",
+      "massOrGm": "2.2032×10^13 km³/s²",
+      "density": "5.427 g/cm³",
+      "gravity": "3.7 m/s²",
+      "temperatureRange": "白天约 427°C，夜晚约 -173°C",
+      "orbitalPeriod": "约 88 地球日",
+      "rotationPeriod": "约 58.6 地球日",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "水星是太阳系中最小的行星，也是离太阳最近的行星。它的表面布满陨石坑，外观类似月球。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "surface",
+        "titleZh": "表面特征",
+        "bodyZh": "水星表面有大量撞击坑，包括直径约 1550 公里的卡路里盆地。此外还有山脉、峡谷和平原。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气",
+        "bodyZh": "水星几乎没有大气层，只有极其稀薄的气体。这导致昼夜温差极大，是太阳系中温差最大的行星。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "orbit",
+        "titleZh": "轨道特征",
+        "bodyZh": "水星的轨道偏心率很大，并且存在轨道共振现象。它的自转周期与公转周期存在 3:2 的共振关系。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA MESSENGER", "ESA BepiColombo", "JPL"],
+    "proceduralAppearanceNote": "水星表面使用程序化撞击坑分布生成，基于半径-频率幂律；未使用真实高程数据"
+  },
+  "299": {
+    "bodyId": 299,
+    "basicParams": {
+      "size": "半径约 6,052 公里",
+      "massOrGm": "3.24859×10^14 km³/s²",
+      "density": "5.243 g/cm³",
+      "gravity": "8.87 m/s²",
+      "temperatureRange": "表面约 465°C（平均）",
+      "orbitalPeriod": "约 224.7 地球日",
+      "rotationPeriod": "约 243 地球日（逆向）",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "金星是太阳系中最热的行星，表面温度超过 460°C。它被厚厚的二氧化碳大气所笼罩，产生了极强的温室效应。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气层",
+        "bodyZh": "金星的大气主要由二氧化碳组成，气压是地球的 92 倍。浓厚的硫酸云层遮挡了其表面，使其成为太阳系中最亮的行星。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "surface",
+        "titleZh": "表面",
+        "bodyZh": "通过雷达探测，金星表面有大量火山平原、火山和山脉。麦克斯韦山脉是金星上最高的山脉，高度超过 11 公里。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "rotation",
+        "titleZh": "自转",
+        "bodyZh": "金星是太阳系中唯一逆向自转的行星，自转周期约为 243 地球日，比公转周期还要长。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA Magellan", "ESA Venus Express", "JPL"],
+    "proceduralAppearanceNote": "金星表面由程序化火山平原纹理合成，云层使用动态硫酸云着色器；非真实雷达图"
+  },
+  "399": {
+    "bodyId": 399,
+    "basicParams": {
+      "size": "半径约 6,371 公里",
+      "massOrGm": "3.986004418×10^14 km³/s²",
+      "density": "5.514 g/cm³",
+      "gravity": "9.8 m/s²",
+      "temperatureRange": "-88°C 至 58°C",
+      "orbitalPeriod": "约 365.25 地球日",
+      "rotationPeriod": "约 24 小时",
+      "satelliteCount": "1",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "地球是太阳系中唯一已知存在生命的行星。它拥有液态水、适宜的温度和保护生命的磁场。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "structure",
+        "titleZh": "内部结构",
+        "bodyZh": "地球由地核、地幔和地壳组成。地核分为内核和外核，地幔是地球体积最大的部分，地壳是我们生活的表面。",
+        "realityTier": "R3"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气层",
+        "bodyZh": "地球大气层由氮气、氧气和其他气体组成，保护地球免受太阳辐射，并维持适宜的温度。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "surface",
+        "titleZh": "表面特征",
+        "bodyZh": "地球表面约 71% 被水覆盖，其余是陆地。有五大洲和四大洋，地形多样，包括山脉、平原、沙漠和海洋。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "magneticField",
+        "titleZh": "磁场",
+        "bodyZh": "地球拥有强大的磁场，形成磁层保护地球免受太阳风的侵害，并产生极光现象。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA", "USGS", "NOAA", "JPL"],
+    "proceduralAppearanceNote": "地球云层与昼夜分界为程序化合成；陆地海岸线为真实数据，云层覆盖为动态生成"
+  },
+  "499": {
+    "bodyId": 499,
+    "basicParams": {
+      "size": "半径约 3,390 公里",
+      "massOrGm": "4.282837×10^13 km³/s²",
+      "density": "3.9335 g/cm³",
+      "gravity": "3.71 m/s²",
+      "temperatureRange": "-125°C 至 20°C",
+      "orbitalPeriod": "约 687 地球日",
+      "rotationPeriod": "约 24.6 小时",
+      "satelliteCount": "2",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "火星是太阳系中与地球最相似的行星。它拥有四季变化、极地冰盖和稀薄的大气，是人类探索的重要目标。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "surface",
+        "titleZh": "表面特征",
+        "bodyZh": "火星表面呈红色，主要由氧化铁组成。有巨大的火山如奥林帕斯山，以及巨大的峡谷如水手峡谷。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气",
+        "bodyZh": "火星大气稀薄，主要由二氧化碳组成，气压仅为地球的约 0.6%。这导致火星表面温度极低。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "polarCaps",
+        "titleZh": "极地冰盖",
+        "bodyZh": "火星南北两极都有冰盖，主要由水冰和干冰组成。夏季时干冰会升华，冬季时会重新凝结。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "water",
+        "titleZh": "水",
+        "bodyZh": "火星上存在水冰，主要分布在极地和地下。历史上可能存在液态水，形成了河流和湖泊的痕迹。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA Mars Science Laboratory", "ESA Mars Express", "JPL"],
+    "proceduralAppearanceNote": "火星沙尘暴与极地冰盖季节变化为程序化合成；表面颜色基于氧化铁分布模型"
+  },
+  "599": {
+    "bodyId": 599,
+    "basicParams": {
+      "size": "半径约 69,911 公里",
+      "massOrGm": "1.266865349×10^17 km³/s²",
+      "density": "1.326 g/cm³",
+      "gravity": "24.79 m/s²",
+      "temperatureRange": "云层顶部约 -145°C，核心约 20,000 K",
+      "orbitalPeriod": "约 11.9 地球年",
+      "rotationPeriod": "约 9.9 小时",
+      "satelliteCount": "95+",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "木星是太阳系中最大的行星，是一颗气态巨行星。它的质量是其他所有行星质量总和的 2.5 倍。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气层",
+        "bodyZh": "木星大气主要由氢和氦组成，有明显的云带和风暴系统。大红斑是一个持续了数百年的巨大风暴。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "interior",
+        "titleZh": "内部",
+        "bodyZh": "木星内部没有固体表面，从液态氢过渡到金属氢，中心可能有一个岩石核心。",
+        "realityTier": "R3"
+      },
+      {
+        "key": "rings",
+        "titleZh": "环系",
+        "bodyZh": "木星拥有一个微弱的环系，主要由尘埃组成，不如土星环壮观。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "moons",
+        "titleZh": "卫星系统",
+        "bodyZh": "木星拥有众多卫星，其中伽利略卫星（木卫一、木卫二、木卫三、木卫四）是最著名的。木卫二可能存在地下海洋。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA Galileo", "ESA JUICE", "JPL"],
+    "proceduralAppearanceNote": "木星云带与大红斑为程序化流体着色器合成；涡旋位置为艺术化呈现，非实时观测"
+  },
+  "699": {
+    "bodyId": 699,
+    "basicParams": {
+      "size": "半径约 58,232 公里",
+      "massOrGm": "3.7931187×10^16 km³/s²",
+      "density": "0.687 g/cm³",
+      "gravity": "10.44 m/s²",
+      "temperatureRange": "云层顶部约 -178°C，核心约 15,000 K",
+      "orbitalPeriod": "约 29.4 地球年",
+      "rotationPeriod": "约 10.7 小时",
+      "satelliteCount": "146+",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "土星是太阳系中最美丽的行星，以其壮观的环系而闻名。它是太阳系中密度最小的行星，可以漂浮在水面上。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气层",
+        "bodyZh": "土星大气主要由氢和氦组成，有明显的云带和风暴。北极有一个独特的六边形风暴系统。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "rings",
+        "titleZh": "环系",
+        "bodyZh": "土星环是太阳系中最壮观的环系，由冰块和岩石碎片组成，分为多个主环和环缝。环的厚度极薄，只有几十米到几公里。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "interior",
+        "titleZh": "内部",
+        "bodyZh": "土星内部与木星类似，没有固体表面，从液态氢过渡到金属氢，中心可能有一个岩石核心。",
+        "realityTier": "R3"
+      },
+      {
+        "key": "moons",
+        "titleZh": "卫星系统",
+        "bodyZh": "土星拥有众多卫星，其中土卫六（泰坦）是太阳系中第二大卫星，拥有浓厚的大气和液态甲烷湖泊。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA Cassini", "ESA", "JPL"],
+    "proceduralAppearanceNote": "土星环粒子分布与卡西尼缝为程序化合成；北极六边形风暴为艺术化建模"
+  },
+  "799": {
+    "bodyId": 799,
+    "basicParams": {
+      "size": "半径约 25,362 公里",
+      "massOrGm": "5.793939×10^15 km³/s²",
+      "density": "1.27 g/cm³",
+      "gravity": "8.69 m/s²",
+      "temperatureRange": "云层顶部约 -224°C，核心约 5,000 K",
+      "orbitalPeriod": "约 84 地球年",
+      "rotationPeriod": "约 17.2 小时",
+      "satelliteCount": "28+",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "天王星是太阳系中唯一“躺倒”旋转的行星，自转轴倾斜约 98°。它呈现出淡蓝色，主要由水、氨和甲烷组成。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气层",
+        "bodyZh": "天王星大气主要由氢、氦和甲烷组成，甲烷吸收红光，使行星呈现蓝色。大气活动相对平静。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "rotation",
+        "titleZh": "自转",
+        "bodyZh": "天王星的自转轴倾斜约 98°，几乎是躺着旋转的。这导致极端的季节变化，每个极区会经历长达 42 年的连续日照或黑暗。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "rings",
+        "titleZh": "环系",
+        "bodyZh": "天王星拥有一个暗弱的环系，由岩石和冰块组成，不如土星环壮观但同样复杂。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "moons",
+        "titleZh": "卫星系统",
+        "bodyZh": "天王星的卫星以莎士比亚作品中的角色命名，主要卫星包括泰坦尼亚、奥伯龙、乌姆布里尔、艾瑞尔和米兰达。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA Voyager 2", "ESA", "JPL"],
+    "proceduralAppearanceNote": "天王星甲烷着色与极地冷点为程序化合成；环系为简化建模"
+  },
+  "899": {
+    "bodyId": 899,
+    "basicParams": {
+      "size": "半径约 24,622 公里",
+      "massOrGm": "6.836534×10^15 km³/s²",
+      "density": "1.638 g/cm³",
+      "gravity": "11.15 m/s²",
+      "temperatureRange": "云层顶部约 -214°C，核心约 7,000 K",
+      "orbitalPeriod": "约 164.8 地球年",
+      "rotationPeriod": "约 16.1 小时",
+      "satelliteCount": "16+",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "海王星是太阳系最远的行星，是一颗冰巨星。它拥有太阳系中最强的风暴，风速可达每小时 2100 公里。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气层",
+        "bodyZh": "海王星大气主要由氢、氦和甲烷组成，呈现深蓝色。大气活动剧烈，有巨大的风暴系统。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "weather",
+        "titleZh": "天气",
+        "bodyZh": "海王星拥有太阳系中最强的风暴，风速可达每小时 2100 公里，是音速的 1.5 倍以上。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "rings",
+        "titleZh": "环系",
+        "bodyZh": "海王星拥有一个暗弱的环系，由尘埃和岩石碎片组成，包含多个环弧。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "moons",
+        "titleZh": "卫星系统",
+        "bodyZh": "海王星的卫星中，海卫一是最大的，也是唯一逆行的大型卫星。它可能是被海王星捕获的柯伊伯带天体。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA Voyager 2", "ESA", "JPL"],
+    "proceduralAppearanceNote": "海王星大暗斑与高速风暴为程序化流体合成；风暴位置非真实时间观测"
+  },
+  "301": {
+    "bodyId": 301,
+    "basicParams": {
+      "size": "半径约 1,737 公里",
+      "massOrGm": "4.9048695×10^12 km³/s²",
+      "density": "3.344 g/cm³",
+      "gravity": "1.62 m/s²",
+      "temperatureRange": "-173°C 至 127°C",
+      "orbitalPeriod": "约 27.3 地球日",
+      "rotationPeriod": "约 27.3 地球日（同步自转）",
+      "assetTier": "S",
+      "precision": "P4"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "月球是地球唯一的天然卫星，是距离地球最近的天体。它的表面布满陨石坑，没有大气和液态水。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "surface",
+        "titleZh": "表面特征",
+        "bodyZh": "月球表面分为高地和月海。高地是古老的撞击坑区域，月海是由玄武岩填充的巨大盆地。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "phases",
+        "titleZh": "月相",
+        "bodyZh": "月球围绕地球公转时，由于太阳照射角度的变化，产生了新月、上弦月、满月、下弦月等月相变化。",
+        "realityTier": "R1"
+      },
+      {
+        "key": "libration",
+        "titleZh": "天平动",
+        "bodyZh": "由于月球轨道的椭圆形状和自转轴的倾斜，我们可以看到月球表面的 59%，这种现象称为天平动。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "origin",
+        "titleZh": "起源",
+        "bodyZh": "目前最被广泛接受的月球起源理论是大碰撞假说：约 45 亿年前，一颗火星大小的天体与原始地球碰撞，形成了月球。",
+        "realityTier": "R3"
+      }
+    ],
+    "sources": ["NASA Apollo", "ESA SMART-1", "JPL"],
+    "proceduralAppearanceNote": "月球月海分布与撞击坑为程序化合成；非 LRO 真实高程，仅用于影视级呈现"
+  },
+  "134340": {
+    "bodyId": 134340,
+    "basicParams": {
+      "size": "半径约 1,188 公里",
+      "massOrGm": "8.703×10^11 km³/s²",
+      "density": "1.860 g/cm³",
+      "gravity": "0.620 m/s²",
+      "temperatureRange": "-240°C 至 -218°C",
+      "orbitalPeriod": "约 248 地球年",
+      "rotationPeriod": "约 6.4 地球日",
+      "satelliteCount": "5",
+      "assetTier": "A",
+      "precision": "P3"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "冥王星是柯伊伯带中最著名的矮行星，曾被认为是太阳系第九大行星。它的表面有冰冻氮、甲烷和一氧化碳。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "surface",
+        "titleZh": "表面特征",
+        "bodyZh": "冥王星表面有著名的心形冰川——汤博区，由氮冰、甲烷冰和一氧化碳冰组成，是太阳系最遥远的大型冰川。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气",
+        "bodyZh": "冥王星拥有稀薄的大气层，主要由氮气组成，气压极低。当冥王星远离太阳时，大气会凝结降落到表面。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "moons",
+        "titleZh": "卫星系统",
+        "bodyZh": "冥王星拥有五颗已知卫星，其中冥卫一卡戎最大，与冥王星组成双星系统，两者相互潮汐锁定。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA New Horizons", "IAU"],
+    "proceduralAppearanceNote": "冥王星汤博区心形冰川位置为艺术化建模；季节性大气凝结为程序化模拟"
+  },
+  "1": {
+    "bodyId": 1,
+    "basicParams": {
+      "size": "半径约 473 公里",
+      "massOrGm": "6.263×10^10 km³/s²",
+      "density": "2.16 g/cm³",
+      "gravity": "0.27 m/s²",
+      "temperatureRange": "-143°C（平均）",
+      "orbitalPeriod": "约 4.6 地球年",
+      "rotationPeriod": "约 9.07 小时",
+      "assetTier": "A",
+      "precision": "P3"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "谷神星是位于火星与木星之间小行星带中最大的天体，也是唯一位于主带内的矮行星。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "surface",
+        "titleZh": "表面特征",
+        "bodyZh": "谷神星表面有神秘的亮点——奥卡托撞击坑内的盐类沉积，表明其地下可能存在卤水。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "interior",
+        "titleZh": "内部",
+        "bodyZh": "谷神星可能拥有地下海洋，由冰幔和岩石核心组成，是太阳系中潜在宜居天体之一。",
+        "realityTier": "R3"
+      }
+    ],
+    "sources": ["NASA Dawn", "ESA"],
+    "proceduralAppearanceNote": "谷神星奥卡托撞击坑亮点为艺术化呈现；表面盐类分布非真实光谱数据"
+  },
+  "136199": {
+    "bodyId": 136199,
+    "basicParams": {
+      "size": "半径约 1,163 公里",
+      "massOrGm": "1.108×10^12 km³/s²",
+      "density": "2.43 g/cm³",
+      "gravity": "0.82 m/s²",
+      "temperatureRange": "-243°C 至 -217°C",
+      "orbitalPeriod": "约 558 地球年",
+      "rotationPeriod": "约 25.9 小时",
+      "satelliteCount": "1",
+      "assetTier": "A",
+      "precision": "P3"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "阋神星是太阳系中已知最大的矮行星之一，质量比冥王星略大，曾引发了关于行星定义的争论。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "surface",
+        "titleZh": "表面特征",
+        "bodyZh": "阋神星表面覆盖着甲烷冰，呈现亮白色。其表面温度极低，约为 -243°C。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "moon",
+        "titleZh": "卫星",
+        "bodyZh": "阋神星拥有一颗名为阋卫一的卫星，是发现阋神星时确认其质量的关键依据。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA", "ESA", "IAU"],
+    "proceduralAppearanceNote": "阋神星表面甲烷冰反照率为程序化合成；非真实望远镜图像"
+  },
+  "501": {
+    "bodyId": 501,
+    "basicParams": {
+      "size": "半径约 1,822 公里",
+      "massOrGm": "5.959×10^12 km³/s²",
+      "density": "3.528 g/cm³",
+      "gravity": "1.796 m/s²",
+      "temperatureRange": "约 -143°C",
+      "orbitalPeriod": "约 1.77 地球日",
+      "rotationPeriod": "约 1.77 地球日（同步自转）",
+      "assetTier": "A",
+      "precision": "P3"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "木卫一是太阳系中火山活动最剧烈的天体，拥有超过 400 座活火山，喷发物可达数百公里高。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "volcanism",
+        "titleZh": "火山活动",
+        "bodyZh": "木卫一的火山活动由木星潮汐力加热驱动，表面覆盖着硫磺和硅酸盐，呈现黄红色。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA Galileo", "NASA Juno", "JPL"],
+    "proceduralAppearanceNote": "木卫一火山喷发柱位置与颜色为程序化合成；非实时观测数据"
+  },
+  "502": {
+    "bodyId": 502,
+    "basicParams": {
+      "size": "半径约 1,561 公里",
+      "massOrGm": "3.203×10^12 km³/s²",
+      "density": "3.013 g/cm³",
+      "gravity": "1.31 m/s²",
+      "temperatureRange": "约 -171°C",
+      "orbitalPeriod": "约 3.55 地球日",
+      "rotationPeriod": "约 3.55 地球日（同步自转）",
+      "assetTier": "A",
+      "precision": "P3"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "木卫二表面覆盖着冰层，冰下可能存在液态海洋，是太阳系中寻找地外生命的重要目标。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "ocean",
+        "titleZh": "地下海洋",
+        "bodyZh": "木卫二冰下海洋的水量可能是地球海洋总和的两倍以上，潮汐力使其保持液态。",
+        "realityTier": "R3"
+      }
+    ],
+    "sources": ["NASA Galileo", "ESA JUICE", "NASA Europa Clipper"],
+    "proceduralAppearanceNote": "木卫二冰壳裂纹与混沌地形为程序化合成；海洋存在性为推测"
+  },
+  "606": {
+    "bodyId": 606,
+    "basicParams": {
+      "size": "半径约 2,575 公里",
+      "massOrGm": "8.978×10^12 km³/s²",
+      "density": "1.88 g/cm³",
+      "gravity": "1.35 m/s²",
+      "temperatureRange": "约 -179°C",
+      "orbitalPeriod": "约 16 地球日",
+      "rotationPeriod": "约 16 地球日（同步自转）",
+      "satelliteCount": "0",
+      "assetTier": "A",
+      "precision": "P3"
+    },
+    "sections": [
+      {
+        "key": "overview",
+        "titleZh": "概述",
+        "bodyZh": "土卫六是土星最大的卫星，也是太阳系中唯一拥有浓厚大气的卫星，表面有液态甲烷湖泊。",
+        "realityTier": "R2"
+      },
+      {
+        "key": "atmosphere",
+        "titleZh": "大气层",
+        "bodyZh": "土卫六大气主要由氮气组成，气压是地球的 1.5 倍。浓厚的橙色雾霾遮挡了其表面。",
+        "realityTier": "R2"
+      }
+    ],
+    "sources": ["NASA Cassini-Huygens", "ESA", "JPL"],
+    "proceduralAppearanceNote": "土卫六甲烷湖泊分布与大气橙色雾霾为程序化合成；非真实 Cassini 雷达图"
+  }
+}
