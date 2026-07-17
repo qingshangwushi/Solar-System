@@ -114,7 +114,8 @@ export interface CelestialStateSnapshot {
 
 /** 天体目录记录（设计文档 13.3）。 */
 export interface BodyRecord {
-  body_id: number;
+  // 修复 E-12 / 支持 E-31：彗星编号如 "1P" 使 body_id 同时接受 number 与 string。
+  body_id: number | string;
   type: string;
   parent_body_id: number | null;
   name_zh: string;

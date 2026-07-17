@@ -37,6 +37,12 @@ import {
   EarthRendererImpl,
   GasGiantRendererImpl,
   RingRendererImpl,
+  IrregularBodyRenderer,
+  BodyRendererFactoryImpl,
+  SATELLITE_BODY_IDS,
+  DWARF_PLANET_BODY_IDS,
+  ASTEROID_BODY_IDS,
+  COMET_BODY_IDS,
 } from '../index.js';
 
 interface MockRendererCalls {
@@ -393,5 +399,221 @@ describe('lazy initialization is idempotent', () => {
     expect(calls.beginPass).toHaveBeenCalledTimes(2);
     expect(calls.endPass).toHaveBeenCalledTimes(2);
     expect(calls.submit).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E-43: IrregularBodyRenderer (asteroids / comet nuclei)
+// ---------------------------------------------------------------------------
+
+describe('IrregularBodyRenderer', () => {
+  it('render() invokes beginPass, draw, endPass and submit exactly once (non-empty)', () => {
+    const { renderer, calls } = createMockRenderer();
+    const asteroid = new IrregularBodyRenderer(433, renderer);
+
+    asteroid.render();
+
+    expect(calls.beginPass).toHaveBeenCalledTimes(1);
+    expect(calls.draw).toHaveBeenCalledTimes(1);
+    expect(calls.endPass).toHaveBeenCalledTimes(1);
+    expect(calls.submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('draw() references real BufferHandles produced by the irregular geometry', () => {
+    const { renderer, calls } = createMockRenderer();
+    const asteroid = new IrregularBodyRenderer(951, renderer);
+
+    asteroid.render();
+
+    const drawCall = calls.draw.mock.calls[0]![0] as DrawCall;
+    expect(drawCall.vertexBuffer.id).toMatch(/^buf-/);
+    expect(drawCall.indexBuffer?.id).toMatch(/^buf-/);
+    expect(drawCall.pipeline.id).toMatch(/^pipe-/);
+    expect(drawCall.vertexCount).toBeGreaterThan(0);
+    expect(drawCall.indexCount).toBeGreaterThan(0);
+  });
+
+  it('produces a noise-perturbed surface (not a perfect sphere)', () => {
+    const { renderer } = createMockRenderer();
+    // Use asteroid 433 Eros; its radius is 16.8 km.
+    const expectedRadius = (PLANET_RADII_KM[433] ?? 1) * 1000;
+    const asteroid = new IrregularBodyRenderer(433, renderer, { noiseAmplitude: 0.2, noiseSeed: 42 });
+
+    asteroid.render();
+
+    const geo = asteroid.getIrregularGeometry();
+    expect(geo).not.toBeNull();
+    expect(geo!.vertexCount).toBeGreaterThan(0);
+    expect(geo!.indexCount).toBeGreaterThan(0);
+
+    // At least one vertex must deviate from the perfect sphere radius by more
+    // than a small epsilon, proving the noise perturbation is applied.
+    const positions = geo!.positions;
+    let perturbedFound = false;
+    for (let i = 0; i < positions.length; i += 3) {
+      const px = positions[i]!;
+      const py = positions[i + 1]!;
+      const pz = positions[i + 2]!;
+      const dist = Math.sqrt(px * px + py * py + pz * pz);
+      if (Math.abs(dist - expectedRadius) > expectedRadius * 0.01) {
+        perturbedFound = true;
+        break;
+      }
+    }
+    expect(perturbedFound).toBe(true);
+  });
+
+  it('getBoundingRadius() accounts for the noise bulge', () => {
+    const { renderer } = createMockRenderer();
+    const asteroid = new IrregularBodyRenderer(433, renderer, { radius: 1000, noiseAmplitude: 0.2 });
+    expect(asteroid.getBoundingRadius()).toBeCloseTo(1200, 3);
+  });
+
+  it('update(), setLOD() and dispose() do not throw', () => {
+    const { renderer } = createMockRenderer();
+    const asteroid = new IrregularBodyRenderer(25143, renderer);
+
+    expect(() => asteroid.update(5, ZERO_VEC, IDENTITY_QUAT, SUN_DIR)).not.toThrow();
+    expect(() => asteroid.setLOD(2)).not.toThrow();
+    expect(() => asteroid.dispose()).not.toThrow();
+  });
+
+  it('dispose() releases pipeline, textures, uniform and geometry buffers', () => {
+    const { renderer, calls } = createMockRenderer();
+    const asteroid = new IrregularBodyRenderer(433, renderer);
+
+    asteroid.render();
+    asteroid.dispose();
+
+    expect(calls.destroyPipeline).toHaveBeenCalledTimes(1);
+    expect(calls.destroyTexture).toHaveBeenCalledTimes(2);
+    expect(calls.destroyBuffer.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('handles string body IDs (comet nuclei) without throwing', () => {
+    const { renderer, calls } = createMockRenderer();
+    const comet = new IrregularBodyRenderer('1P', renderer);
+
+    comet.render();
+
+    expect(calls.draw).toHaveBeenCalledTimes(1);
+    expect(comet.getIrregularGeometry()).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E-43: BodyRendererFactoryImpl routing for the full catalog
+// ---------------------------------------------------------------------------
+
+describe('BodyRendererFactoryImpl catalog coverage (E-43)', () => {
+  it('routes satellites to SolidPlanetRenderer', () => {
+    const { renderer } = createMockRenderer();
+    const factory = new BodyRendererFactoryImpl(renderer);
+
+    const moonRenderer = factory.create(301);
+    const ioRenderer = factory.create(501);
+    const tritonRenderer = factory.create(801);
+    const charonRenderer = factory.create(1343401);
+
+    expect(moonRenderer).toBeInstanceOf(SolidPlanetRenderer);
+    expect(ioRenderer).toBeInstanceOf(SolidPlanetRenderer);
+    expect(tritonRenderer).toBeInstanceOf(SolidPlanetRenderer);
+    expect(charonRenderer).toBeInstanceOf(SolidPlanetRenderer);
+  });
+
+  it('routes dwarf-planets to SolidPlanetRenderer', () => {
+    const { renderer } = createMockRenderer();
+    const factory = new BodyRendererFactoryImpl(renderer);
+
+    expect(factory.create(1)).toBeInstanceOf(SolidPlanetRenderer); // Ceres
+    expect(factory.create(134340)).toBeInstanceOf(SolidPlanetRenderer); // Pluto
+    expect(factory.create(136199)).toBeInstanceOf(SolidPlanetRenderer); // Eris
+    expect(factory.create(136472)).toBeInstanceOf(SolidPlanetRenderer); // Makemake
+    expect(factory.create(136108)).toBeInstanceOf(SolidPlanetRenderer); // Haumea
+  });
+
+  it('routes asteroids to IrregularBodyRenderer', () => {
+    const { renderer } = createMockRenderer();
+    const factory = new BodyRendererFactoryImpl(renderer);
+
+    expect(factory.create(433)).toBeInstanceOf(IrregularBodyRenderer); // Eros
+    expect(factory.create(101955)).toBeInstanceOf(IrregularBodyRenderer); // Bennu
+    expect(factory.create(951)).toBeInstanceOf(IrregularBodyRenderer); // Gaspra
+    expect(factory.create(243)).toBeInstanceOf(IrregularBodyRenderer); // Ida
+    expect(factory.create(25143)).toBeInstanceOf(IrregularBodyRenderer); // Itokawa
+  });
+
+  it('routes comets (string IDs) to IrregularBodyRenderer', () => {
+    const { renderer } = createMockRenderer();
+    const factory = new BodyRendererFactoryImpl(renderer);
+
+    expect(factory.create('1P')).toBeInstanceOf(IrregularBodyRenderer); // Halley
+    expect(factory.create('19P')).toBeInstanceOf(IrregularBodyRenderer); // Borrelly
+    expect(factory.create('81P')).toBeInstanceOf(IrregularBodyRenderer); // Wild 2
+    expect(factory.create('9P')).toBeInstanceOf(IrregularBodyRenderer); // Tempel 1
+  });
+
+  it('returns the same renderer instance on repeated create() for the same bodyId', () => {
+    const { renderer } = createMockRenderer();
+    const factory = new BodyRendererFactoryImpl(renderer);
+
+    const first = factory.create(501);
+    const second = factory.create(501);
+    expect(second).toBe(first);
+  });
+
+  it('returns null for an unknown bodyId', () => {
+    const { renderer } = createMockRenderer();
+    const factory = new BodyRendererFactoryImpl(renderer);
+
+    expect(factory.create(999999)).toBeNull();
+  });
+
+  it('renders a satellite and a comet end-to-end through the factory', () => {
+    const { renderer, calls } = createMockRenderer();
+    const factory = new BodyRendererFactoryImpl(renderer);
+
+    const titan = factory.create(606);
+    const halley = factory.create('1P');
+    expect(titan).not.toBeNull();
+    expect(halley).not.toBeNull();
+    titan!.render();
+    halley!.render();
+
+    expect(calls.draw).toHaveBeenCalledTimes(2);
+    expect(calls.beginPass).toHaveBeenCalledTimes(2);
+    expect(calls.submit).toHaveBeenCalledTimes(2);
+  });
+
+  it('covers the full 58+ body navigation catalog', () => {
+    const { renderer } = createMockRenderer();
+    const factory = new BodyRendererFactoryImpl(renderer);
+
+    const allNumericBodies = [
+      10, 199, 299, 399, 301, 499, 401, 402, 599, 501, 502, 503, 504, 505, 506,
+      699, 601, 602, 603, 604, 605, 606, 607, 608, 799, 701, 702, 703, 704, 705,
+      899, 801, 802, 803, 804, 805, 806, 807, 808, 134340, 1343401, 1343402,
+      1343403, 1343404, 1343405, 1, 136199, 136472, 136108, 433, 101955, 951,
+      243, 25143,
+    ];
+    const allStringBodies = ['1P', '19P', '81P', '9P'];
+    const total = allNumericBodies.length + allStringBodies.length;
+    expect(total).toBeGreaterThanOrEqual(58);
+
+    let nonNullCount = 0;
+    for (const id of allNumericBodies) {
+      if (factory.create(id) !== null) nonNullCount++;
+    }
+    for (const id of allStringBodies) {
+      if (factory.create(id) !== null) nonNullCount++;
+    }
+    expect(nonNullCount).toBe(total);
+  });
+
+  it('SATELLITE/DWARF_PLANET/ASTEROID/COMET sets are non-empty', () => {
+    expect(SATELLITE_BODY_IDS.size).toBeGreaterThan(0);
+    expect(DWARF_PLANET_BODY_IDS.size).toBeGreaterThan(0);
+    expect(ASTEROID_BODY_IDS.size).toBeGreaterThan(0);
+    expect(COMET_BODY_IDS.size).toBeGreaterThan(0);
   });
 });

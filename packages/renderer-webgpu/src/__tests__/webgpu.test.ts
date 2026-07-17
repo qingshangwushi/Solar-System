@@ -1,5 +1,13 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { WebGpuRenderer, WebGpuRendererFactory, bytesPerPixel, alignTo, getBufferUsage, getTextureUsage } from '../index.js';
+import {
+  WebGpuRenderer,
+  WebGpuRendererFactory,
+  bytesPerPixel,
+  alignTo,
+  getBufferUsage,
+  getTextureUsage,
+  mapPrimitiveTopology,
+} from '../index.js';
 
 describe('WebGPU Renderer', () => {
   it('应创建后端类型为 webgpu 的渲染器', () => {
@@ -220,5 +228,149 @@ describe('WebGPU usage 命名常量回退 (E-05)', () => {
     expect(usage.TEXTURE_BINDING).toBe(4);
     expect(usage.STORAGE_BINDING).toBe(8);
     expect(usage.RENDER_ATTACHMENT).toBe(16);
+  });
+});
+
+describe('mapPrimitiveTopology (E-03)', () => {
+  it('points → point-list', () => {
+    expect(mapPrimitiveTopology('points')).toBe('point-list');
+  });
+
+  it('lines → line-list', () => {
+    expect(mapPrimitiveTopology('lines')).toBe('line-list');
+  });
+
+  it('line_strip → line-strip', () => {
+    expect(mapPrimitiveTopology('line_strip')).toBe('line-strip');
+  });
+
+  it('triangles → triangle-list', () => {
+    expect(mapPrimitiveTopology('triangles')).toBe('triangle-list');
+  });
+
+  it('triangle_strip → triangle-strip', () => {
+    expect(mapPrimitiveTopology('triangle_strip')).toBe('triangle-strip');
+  });
+
+  it('createPipeline 应使用 mapPrimitiveTopology 映射拓扑到 GPUPrimitiveTopology', () => {
+    const cases: Array<{ input: 'points' | 'lines' | 'line_strip' | 'triangles' | 'triangle_strip'; expected: string }> = [
+      { input: 'points', expected: 'point-list' },
+      { input: 'lines', expected: 'line-list' },
+      { input: 'line_strip', expected: 'line-strip' },
+      { input: 'triangles', expected: 'triangle-list' },
+      { input: 'triangle_strip', expected: 'triangle-strip' },
+    ];
+
+    for (const c of cases) {
+      let capturedConfig: { primitive: { topology: string; cullMode: string } };
+      const mockDevice = {
+        createRenderPipeline: (config: unknown) => {
+          capturedConfig = config as { primitive: { topology: string; cullMode: string } };
+          return {};
+        },
+        createShaderModule: () => ({}),
+      };
+
+      const renderer = new WebGpuRenderer();
+      (renderer as unknown as { device: unknown }).device = mockDevice;
+
+      renderer.createPipeline({
+        vertexShader: { stage: 'vertex', source: '' },
+        fragmentShader: { stage: 'fragment', source: '' },
+        vertexAttributes: [{ name: 'pos', format: 'float32x3', offset: 0, stride: 12 }],
+        topology: c.input,
+      });
+
+      expect(capturedConfig!.primitive.topology).toBe(c.expected);
+    }
+  });
+
+  it('createPipeline cullMode 缺省时默认 none', () => {
+    let capturedConfig: { primitive: { cullMode: string } };
+    const mockDevice = {
+      createRenderPipeline: (config: unknown) => {
+        capturedConfig = config as { primitive: { cullMode: string } };
+        return {};
+      },
+      createShaderModule: () => ({}),
+    };
+
+    const renderer = new WebGpuRenderer();
+    (renderer as unknown as { device: unknown }).device = mockDevice;
+
+    renderer.createPipeline({
+      vertexShader: { stage: 'vertex', source: '' },
+      fragmentShader: { stage: 'fragment', source: '' },
+      vertexAttributes: [{ name: 'pos', format: 'float32x3', offset: 0, stride: 12 }],
+      topology: 'triangles',
+    });
+
+    expect(capturedConfig!.primitive.cullMode).toBe('none');
+  });
+});
+
+describe('WebGPU shaderLocation (E-04)', () => {
+  it('多顶点属性应分配递增 shaderLocation（不冲突）', () => {
+    let capturedConfig: { vertex: { buffers: Array<{ arrayStride: number; attributes: Array<{ shaderLocation: number; offset: number; format: string }> }> } };
+    const mockDevice = {
+      createRenderPipeline: (config: unknown) => {
+        capturedConfig = config as typeof capturedConfig;
+        return {};
+      },
+      createShaderModule: () => ({}),
+    };
+
+    const renderer = new WebGpuRenderer();
+    (renderer as unknown as { device: unknown }).device = mockDevice;
+
+    renderer.createPipeline({
+      vertexShader: { stage: 'vertex', source: '' },
+      fragmentShader: { stage: 'fragment', source: '' },
+      vertexAttributes: [
+        { name: 'pos', format: 'float32x3', offset: 0, stride: 24 },
+        { name: 'uv', format: 'float32x2', offset: 12, stride: 24 },
+      ],
+      topology: 'triangles',
+    });
+
+    // 每个顶点属性对应一个 buffer 入口，attributes 内仅 1 个元素，
+    // 但 shaderLocation 应使用顶点属性索引（0、1），不再硬编码为 0。
+    const buffers = capturedConfig!.vertex.buffers;
+    expect(buffers).toHaveLength(2);
+
+    const attr0 = buffers[0]!.attributes[0]!;
+    expect(attr0.shaderLocation).toBe(0);
+    expect(attr0.offset).toBe(0);
+    expect(attr0.format).toBe('float32x3');
+
+    const attr1 = buffers[1]!.attributes[0]!;
+    expect(attr1.shaderLocation).toBe(1);
+    expect(attr1.offset).toBe(12);
+    expect(attr1.format).toBe('float32x2');
+  });
+
+  it('单顶点属性 shaderLocation 为 0', () => {
+    let capturedConfig: { vertex: { buffers: Array<{ attributes: Array<{ shaderLocation: number }> }> } };
+    const mockDevice = {
+      createRenderPipeline: (config: unknown) => {
+        capturedConfig = config as typeof capturedConfig;
+        return {};
+      },
+      createShaderModule: () => ({}),
+    };
+
+    const renderer = new WebGpuRenderer();
+    (renderer as unknown as { device: unknown }).device = mockDevice;
+
+    renderer.createPipeline({
+      vertexShader: { stage: 'vertex', source: '' },
+      fragmentShader: { stage: 'fragment', source: '' },
+      vertexAttributes: [{ name: 'pos', format: 'float32x3', offset: 0, stride: 12 }],
+      topology: 'triangles',
+    });
+
+    const attrs = capturedConfig!.vertex.buffers[0]!.attributes;
+    expect(attrs).toHaveLength(1);
+    expect(attrs[0]!.shaderLocation).toBe(0);
   });
 });

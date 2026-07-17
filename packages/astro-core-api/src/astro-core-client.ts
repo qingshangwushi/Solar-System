@@ -256,6 +256,19 @@ export class AstroCoreClient {
     return resp.payload.result as AstroEvent[];
   }
 
+  /** 按时间窗口搜索事件（设计文档 42.6，委托给 Worker 的事件引擎）。 */
+  async eventSearch(windowStart: number, windowEnd: number): Promise<AstroEvent[]> {
+    const resp = await this.rpc({
+      method: 'event.search',
+      event_type: 'all',
+      bodies: 'all',
+      time_range: [windowStart, windowEnd],
+      precision: 'P2',
+    });
+    if (!resp.payload.ok) throw new Error(resp.payload.error.message_zh);
+    return resp.payload.result as AstroEvent[];
+  }
+
   /** 订阅时间边界。 */
   subscribeTimeBoundary(listener: TimeBoundaryListener): () => void {
     this.timeBoundaryListeners.add(listener);

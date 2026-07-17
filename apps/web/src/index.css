@@ -22,3 +22,20 @@ body,
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* 辅助文本（弱化灰色，等价于 Tailwind slate-400 rgb(148 163 184)） */
+.text-muted {
+  color: rgb(148 163 184);
+}
+
+/* 尊重用户的"减少动画"系统偏好（WCAG 2.3.3 / a11y 修复 E-42） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

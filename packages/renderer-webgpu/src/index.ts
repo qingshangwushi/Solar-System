@@ -15,6 +15,7 @@ import {
   type DrawCall,
   type BackendType,
   type RendererFactory,
+  type PrimitiveType,
   registerRendererFactory,
 } from '@solar-system/renderer-core';
 
@@ -64,6 +65,33 @@ export function bytesPerPixel(format: string): number {
  */
 export function alignTo(value: number, alignment: number): number {
   return Math.ceil(value / alignment) * alignment;
+}
+
+/**
+ * 将统一渲染层的 PrimitiveType 映射到 WebGPU GPUPrimitiveTopology 字符串。
+ * 覆盖 points/lines/line_strip/triangles/triangle_strip 完整拓扑集合。
+ */
+export function mapPrimitiveTopology(topology: PrimitiveType): string {
+  switch (topology) {
+    case 'points':
+      return 'point-list';
+    case 'lines':
+      return 'line-list';
+    case 'line_strip':
+      return 'line-strip';
+    case 'triangles':
+      return 'triangle-list';
+    case 'triangle_strip':
+      return 'triangle-strip';
+    default:
+      return 'triangle-list';
+  }
+}
+
+/** 设备丢失时由 device.lost 回调传入的 info 结构。 */
+export interface DeviceLostInfo {
+  reason: string;
+  message: string;
 }
 
 /**
@@ -144,6 +172,11 @@ class WebGpuRenderer implements Renderer {
   private device: unknown = null;
   private context: unknown = null;
   private presentationFormat: string = 'rgba8unorm';
+  private canvas: HTMLCanvasElement | null = null;
+  private gpu: {
+    requestAdapter(options?: unknown): Promise<unknown | null>;
+    getPreferredCanvasFormat?: () => string;
+  } | null = null;
 
   private buffers = new Map<string, unknown>();
   private textures = new Map<string, unknown>();
@@ -154,6 +187,13 @@ class WebGpuRenderer implements Renderer {
   private currentCommandEncoder: unknown = null;
   private pendingCommandBuffers: unknown[] = [];
   private textureMetadata = new Map<string, { width: number; height: number; format: string }>();
+
+  /** 设备丢失标志，由 device.lost 回调置位。 */
+  private deviceLost = false;
+  /** 重建需求标志，外部轮询后在重建完成后通过 clearRebuildFlag 清除。 */
+  private rebuildRequired = false;
+  /** 用户注册的设备丢失回调（可选）。 */
+  onDeviceLost: ((info: DeviceLostInfo) => void) | null = null;
 
   constructor() {
     this.capabilities = {
@@ -173,20 +213,41 @@ class WebGpuRenderer implements Renderer {
       throw new Error('WebGPU is not supported');
     }
 
-    const gpu = navigator.gpu as unknown as {
+    this.gpu = navigator.gpu as unknown as {
       requestAdapter(options?: unknown): Promise<unknown | null>;
       getPreferredCanvasFormat?: () => string;
     };
+    this.canvas = canvas;
 
-    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    const adapter = await this.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) {
       throw new Error('Failed to get WebGPU adapter');
     }
 
-    this.device = await (adapter as unknown as { requestDevice(): Promise<unknown> }).requestDevice();
-    this.context = canvas.getContext('webgpu');
-    this.presentationFormat = gpu.getPreferredCanvasFormat?.() ?? 'rgba8unorm';
+    await this.acquireDevice(adapter);
+  }
 
+  /**
+   * 内部：从 adapter 获取 device、注册 device.lost 监听、配置 canvas context、读取 adapter limits。
+   * init() 与 reinit() 共享该流程。
+   */
+  private async acquireDevice(adapter: unknown): Promise<void> {
+    const device = await (adapter as unknown as { requestDevice(): Promise<unknown> }).requestDevice();
+    this.device = device;
+    this.deviceLost = false;
+
+    // 注册 device.lost 监听：WebGPU 规范要求 lost 是一个 Promise<DeviceLostInfo>
+    const lost = (device as unknown as { lost?: Promise<DeviceLostInfo> }).lost;
+    if (lost) {
+      lost.then((info: DeviceLostInfo) => this.handleDeviceLost(info));
+    }
+
+    if (this.canvas && !this.context) {
+      this.context = this.canvas.getContext('webgpu');
+    }
+    if (this.gpu) {
+      this.presentationFormat = this.gpu.getPreferredCanvasFormat?.() ?? 'rgba8unorm';
+    }
     if (this.context) {
       (this.context as unknown as { configure(config: unknown): void }).configure({
         device: this.device,
@@ -208,6 +269,65 @@ class WebGpuRenderer implements Renderer {
     };
   }
 
+  /**
+   * 设备丢失回调：标记 deviceLost + rebuildRequired，销毁所有 GPU 资源，触发用户回调。
+   */
+  handleDeviceLost(info: DeviceLostInfo): void {
+    this.deviceLost = true;
+    this.rebuildRequired = true;
+
+    // 销毁所有 GPU 资源（device 已丢失，资源句柄不可再用）
+    this.buffers.forEach((buf) => (buf as unknown as { destroy?: () => void }).destroy?.());
+    this.textures.forEach((tex) => (tex as unknown as { destroy?: () => void }).destroy?.());
+    this.pipelines.forEach((pipe) => (pipe as unknown as { destroy?: () => void }).destroy?.());
+    this.buffers.clear();
+    this.textures.clear();
+    this.pipelines.clear();
+    this.textureMetadata.clear();
+
+    this.device = null;
+
+    if (this.onDeviceLost) {
+      this.onDeviceLost(info);
+    }
+  }
+
+  /**
+   * 重新初始化：重新 requestAdapter + requestDevice + context.configure。
+   * 通常在 handleDeviceLost 触发后由外部调用以恢复渲染。
+   */
+  async reinit(): Promise<void> {
+    if (!this.gpu) {
+      throw new Error('Renderer not initialized');
+    }
+    if (!this.canvas) {
+      throw new Error('Renderer not initialized');
+    }
+
+    const adapter = await this.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) {
+      throw new Error('Failed to get WebGPU adapter');
+    }
+
+    await this.acquireDevice(adapter);
+    this.rebuildRequired = false;
+  }
+
+  /** 当前设备是否处于丢失状态。 */
+  isDeviceLost(): boolean {
+    return this.deviceLost;
+  }
+
+  /** 是否需要重建（设备丢失后置位，由外部在重建流程结束后调用 clearRebuildFlag 清除）。 */
+  isRebuildRequired(): boolean {
+    return this.rebuildRequired;
+  }
+
+  /** 清除重建标志（外部完成重建流程后调用）。 */
+  clearRebuildFlag(): void {
+    this.rebuildRequired = false;
+  }
+
   destroy(): void {
     this.buffers.forEach((buf) => (buf as unknown as { destroy: () => void }).destroy?.());
     this.textures.forEach((tex) => (tex as unknown as { destroy: () => void }).destroy?.());
@@ -221,6 +341,10 @@ class WebGpuRenderer implements Renderer {
     (this.device as unknown as { destroy: () => void })?.destroy?.();
     this.device = null;
     this.context = null;
+    this.canvas = null;
+    this.gpu = null;
+    this.deviceLost = false;
+    this.rebuildRequired = false;
   }
 
   resize(width: number, height: number): void {
@@ -337,9 +461,9 @@ class WebGpuRenderer implements Renderer {
           code: desc.vertexShader.source,
         }),
         entryPoint: desc.vertexShader.entryPoint ?? 'main',
-        buffers: desc.vertexAttributes.map((attr) => ({
+        buffers: desc.vertexAttributes.map((attr, i) => ({
           arrayStride: attr.stride,
-          attributes: [{ shaderLocation: 0, offset: attr.offset, format: attr.format }],
+          attributes: [{ shaderLocation: i, offset: attr.offset, format: attr.format }],
         })),
       },
       fragment: {
@@ -350,8 +474,8 @@ class WebGpuRenderer implements Renderer {
         targets: [{ format: this.presentationFormat }],
       },
       primitive: {
-        topology: desc.topology === 'triangles' ? 'triangle-list' : 'triangle-list',
-        cullMode: desc.cullMode === 'back' ? 'back' : desc.cullMode === 'front' ? 'front' : undefined,
+        topology: mapPrimitiveTopology(desc.topology),
+        cullMode: desc.cullMode ?? 'none',
       },
       depthStencil: desc.depthTest
         ? {

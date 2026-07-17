@@ -1,0 +1,23 @@
+{
+  "schema": "solar-system-manifest/v1",
+  "version": "0.1.0",
+  "generated": "smoke",
+  "root": "/workspace",
+  "scan_dirs": [
+    "data-src/normalized",
+    "assets-src"
+  ],
+  "total_files": 1,
+  "total_size": 107360,
+  "by_top_level": {
+    "data-src": 1
+  },
+  "entries": [
+    {
+      "path": "data-src/normalized/catalog.json",
+      "size": 107360,
+      "sha256": "4b7a5ea73a84576d3086a6a100df1c6f271963bcd5a00b060361a4380e5bcf97",
+      "dependencies": []
+    }
+  ]
+}

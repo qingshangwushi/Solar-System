@@ -5,7 +5,13 @@ import {
   computeLunarEclipse,
   computeShadowOnSurface,
   computeShadowMapParams,
+  computeContactTimes,
+  computeContactTimesFromSeparation,
+  sampleShadowPCF,
+  findRoot,
+  ArrayShadowMap,
 } from '../shadows.js';
+import type { ShadowMapSampler } from '../shadows.js';
 
 describe('Shadow and Eclipse Geometry', () => {
   describe('Shadow Cone', () => {
@@ -183,5 +189,246 @@ describe('Shadow and Eclipse Geometry', () => {
       expect(params.viewMatrix.length).toBe(16);
       expect(params.resolution).toBe(2048);
     });
+  });
+});
+
+describe('findRoot (Bisection)', () => {
+  it('should find the root of a linear function', () => {
+    const root = findRoot((x) => x - 2, 0, 10);
+    expect(root).not.toBeNull();
+    expect(root as number).toBeCloseTo(2, 5);
+  });
+
+  it('should find the root of a quadratic function', () => {
+    // f(x) = x^2 - 4 has roots at x=2 and x=-2; in [0, 5] should find x=2
+    const root = findRoot((x) => x * x - 4, 0, 5);
+    expect(root).not.toBeNull();
+    expect(root as number).toBeCloseTo(2, 4);
+  });
+
+  it('should return null when signs at endpoints are the same', () => {
+    const root = findRoot((x) => x * x + 1, -1, 1);
+    expect(root).toBeNull();
+  });
+
+  it('should return the endpoint when f(a) is exactly zero', () => {
+    const root = findRoot((x) => x, 0, 1);
+    expect(root).toBe(0);
+  });
+
+  it('should return the endpoint when f(b) is exactly zero', () => {
+    const root = findRoot((x) => x - 1, 0, 1);
+    expect(root).toBe(1);
+  });
+
+  it('should respect the tolerance parameter', () => {
+    const root = findRoot((x) => x - Math.PI, 0, 10, 1e-2);
+    expect(root).not.toBeNull();
+    expect(Math.abs((root as number) - Math.PI)).toBeLessThan(1e-2);
+  });
+});
+
+describe('sampleShadowPCF', () => {
+  it('should return 1.0 when fully illuminated (depth less than stored)', () => {
+    const map = ArrayShadowMap.filled(8, 8, 0.9);
+    const visibility = sampleShadowPCF(map, [0.5, 0.5], 0.5, 1);
+    expect(visibility).toBe(1.0);
+  });
+
+  it('should return 0.0 when fully shadowed (depth greater than stored)', () => {
+    const map = ArrayShadowMap.filled(8, 8, 0.1);
+    const visibility = sampleShadowPCF(map, [0.5, 0.5], 0.9, 1);
+    expect(visibility).toBe(0.0);
+  });
+
+  it('should average over a 3x3 kernel', () => {
+    // Build a 4x4 map: top-left 2x2 region has depth 0.9 (visible); rest has depth 0.1 (shadow)
+    const map = new ArrayShadowMap(4, 4);
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        if (x < 2 && y < 2) {
+          map.setPixel(x, y, 0.9);
+        } else {
+          map.setPixel(x, y, 0.1);
+        }
+      }
+    }
+    // Sample at center of map with depth=0.5; some neighbors visible, others not
+    const visibility = sampleShadowPCF(map, [0.5, 0.5], 0.5, 3, null, 0.0);
+    expect(visibility).toBeGreaterThan(0);
+    expect(visibility).toBeLessThan(1);
+  });
+
+  it('should accept a custom sampler', () => {
+    const map = ArrayShadowMap.filled(4, 4, 0.5);
+    const sampler: ShadowMapSampler = {
+      sampleDepth: () => 0.9,
+    };
+    const visibility = sampleShadowPCF(map, [0.5, 0.5], 0.5, 3, sampler);
+    expect(visibility).toBe(1.0);
+  });
+
+  it('should clamp UV coordinates to [0,1]', () => {
+    const map = ArrayShadowMap.filled(4, 4, 0.9);
+    const visibility = sampleShadowPCF(map, [1.5, -0.5], 0.5, 1);
+    expect(visibility).toBe(1.0);
+  });
+
+  it('should handle kernelSize=1 as single-sample', () => {
+    const map = ArrayShadowMap.filled(8, 8, 0.7);
+    const v1 = sampleShadowPCF(map, [0.5, 0.5], 0.5, 1);
+    expect(v1).toBe(1.0);
+    const v2 = sampleShadowPCF(map, [0.5, 0.5], 0.9, 1);
+    expect(v2).toBe(0.0);
+  });
+
+  it('should respect bias parameter', () => {
+    // depth = 0.5; stored = 0.5 + bias + 0.001 -> stored > depth + bias => visible
+    const map = ArrayShadowMap.filled(8, 8, 0.502);
+    const v1 = sampleShadowPCF(map, [0.5, 0.5], 0.5, 1, null, 0.001);
+    expect(v1).toBe(1.0);
+    const v2 = sampleShadowPCF(map, [0.5, 0.5], 0.5, 1, null, 0.005);
+    expect(v2).toBe(0.0);
+  });
+});
+
+describe('ArrayShadowMap', () => {
+  it('should construct with given dimensions', () => {
+    const map = new ArrayShadowMap(4, 4);
+    expect(map.width).toBe(4);
+    expect(map.height).toBe(4);
+    expect(map.data.length).toBe(16);
+  });
+
+  it('should fill with given value via filled()', () => {
+    const map = ArrayShadowMap.filled(2, 2, 0.5);
+    expect(map.sample(0.25, 0.25)).toBeCloseTo(0.5, 5);
+    expect(map.sample(0.75, 0.75)).toBeCloseTo(0.5, 5);
+  });
+
+  it('should set and read pixels', () => {
+    const map = new ArrayShadowMap(2, 2);
+    map.setPixel(0, 0, 0.9);
+    map.setPixel(1, 1, 0.1);
+    expect(map.sample(0.25, 0.25)).toBeCloseTo(0.9, 5);
+    expect(map.sample(0.75, 0.75)).toBeCloseTo(0.1, 5);
+  });
+
+  it('should clamp out-of-bounds UVs to edge', () => {
+    const map = new ArrayShadowMap(2, 2);
+    map.setPixel(0, 0, 0.3);
+    map.setPixel(1, 1, 0.7);
+    expect(map.sample(-1, -1)).toBeCloseTo(0.3, 5);
+    expect(map.sample(2, 2)).toBeCloseTo(0.7, 5);
+  });
+});
+
+describe('computeContactTimes', () => {
+  // Build a separation function that is V-shaped with minimum 0 at t=50
+  // sep(t) = |t - 50|
+  const vShape = (t: number): number => Math.abs(t - 50);
+
+  it('should return Greatest at the minimum-separation time', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const greatest = contacts.find((c) => c.type === 'Greatest');
+    expect(greatest).toBeDefined();
+    expect(greatest?.time).toBeCloseTo(50, 1);
+  });
+
+  it('should compute P1 at the time separation crosses radiusP1 from above', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const p1 = contacts.find((c) => c.type === 'P1');
+    expect(p1).toBeDefined();
+    expect(p1?.time).toBeCloseTo(20, 1); // |t-50| = 30 => t = 20
+  });
+
+  it('should compute P2 at the time separation crosses radiusP1 from below', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const p2 = contacts.find((c) => c.type === 'P2');
+    expect(p2).toBeDefined();
+    expect(p2?.time).toBeCloseTo(80, 1); // |t-50| = 30 => t = 80
+  });
+
+  it('should compute U1 (total begin) when separation dips below radiusU1', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const u1 = contacts.find((c) => c.type === 'U1');
+    expect(u1).toBeDefined();
+    expect(u1?.time).toBeCloseTo(40, 1); // |t-50| = 10 => t = 40
+  });
+
+  it('should compute U4 (total end) when separation rises above radiusU1', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const u4 = contacts.find((c) => c.type === 'U4');
+    expect(u4).toBeDefined();
+    expect(u4?.time).toBeCloseTo(60, 1);
+  });
+
+  it('should include U2 between U1 and Greatest', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const u2 = contacts.find((c) => c.type === 'U2');
+    const u1 = contacts.find((c) => c.type === 'U1');
+    const greatest = contacts.find((c) => c.type === 'Greatest');
+    expect(u2).toBeDefined();
+    expect(u2?.time).toBeGreaterThan(u1?.time as number);
+    expect(u2?.time).toBeLessThan(greatest?.time as number);
+  });
+
+  it('should include U3 between Greatest and U4', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const u3 = contacts.find((c) => c.type === 'U3');
+    const greatest = contacts.find((c) => c.type === 'Greatest');
+    const u4 = contacts.find((c) => c.type === 'U4');
+    expect(u3).toBeDefined();
+    expect(u3?.time).toBeGreaterThan(greatest?.time as number);
+    expect(u3?.time).toBeLessThan(u4?.time as number);
+  });
+
+  it('should return contacts in ascending time order', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    for (let i = 1; i < contacts.length; i++) {
+      expect(contacts[i]!.time).toBeGreaterThanOrEqual(contacts[i - 1]!.time);
+    }
+  });
+
+  it('should omit U1/U2/U3/U4 when total eclipse does not occur', () => {
+    // V-shape with minimum 0.5 at t=50; radiusU1 = 0.1 so no total eclipse
+    const sep = (t: number): number => 0.5 + Math.abs(t - 50) * 0.01;
+    const contacts = computeContactTimes(sep, 0, 100, 1.0, 0.1);
+    const types = contacts.map((c) => c.type);
+    expect(types).not.toContain('U1');
+    expect(types).not.toContain('U2');
+    expect(types).not.toContain('U3');
+    expect(types).not.toContain('U4');
+  });
+
+  it('should produce 7 contacts for a total-eclipse V-shape', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    expect(contacts.length).toBe(7);
+    const types = new Set(contacts.map((c) => c.type));
+    expect(types.has('P1')).toBe(true);
+    expect(types.has('U1')).toBe(true);
+    expect(types.has('U2')).toBe(true);
+    expect(types.has('Greatest')).toBe(true);
+    expect(types.has('U3')).toBe(true);
+    expect(types.has('U4')).toBe(true);
+    expect(types.has('P2')).toBe(true);
+  });
+
+  it('should agree with computeContactTimesFromSeparation', () => {
+    const a = computeContactTimes(vShape, 0, 100, 30, 10);
+    const b = computeContactTimesFromSeparation(vShape, 0, 100, 30, 10);
+    expect(a.length).toBe(b.length);
+    for (let i = 0; i < a.length; i++) {
+      expect(a[i]!.type).toBe(b[i]!.type);
+      expect(a[i]!.time).toBeCloseTo(b[i]!.time, 6);
+    }
+  });
+
+  it('should handle a sinusoidal separation function', () => {
+    // Sep = 1 + cos(t) => minimum 0 at t=PI, max 2 at t=0,2PI
+    const sep = (t: number): number => 1 + Math.cos(t);
+    const contacts = computeContactTimes(sep, 0, 2 * Math.PI, 1.5, 0.5);
+    const greatest = contacts.find((c) => c.type === 'Greatest');
+    expect(greatest?.time).toBeCloseTo(Math.PI, 1);
   });
 });

@@ -94,15 +94,23 @@ export default function DiagnosticsPanel() {
         onClick={() => setIsOpen(!isOpen)}
         className="fixed bottom-4 right-4 z-50 rounded-full bg-space-800/90 p-2 text-xs text-slate-300 hover:bg-space-700 transition-colors"
         title="诊断面板"
+        aria-label={isOpen ? '关闭诊断面板' : '打开诊断面板'}
+        aria-expanded={isOpen}
+        aria-controls="diagnostics-panel-content"
       >
         {isOpen ? '✕' : '⚙'}
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-16 right-4 z-50 w-80 rounded-lg border border-space-600 bg-space-900/95 p-3 text-xs text-slate-400 shadow-xl">
+        <div
+          id="diagnostics-panel-content"
+          className="fixed bottom-16 right-4 z-50 w-80 rounded-lg border border-space-600 bg-space-900/95 p-3 text-xs text-slate-400 shadow-xl"
+          role="dialog"
+          aria-label="诊断面板"
+        >
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-slate-200">诊断面板</h2>
-            <span className="text-accent">{data.version}</span>
+            <span className="text-accent" aria-label={`版本 ${data.version}`}>{data.version}</span>
           </div>
 
           <div className="space-y-2">
@@ -198,8 +206,37 @@ export default function DiagnosticsPanel() {
                   navigator.clipboard.writeText(info);
                 }}
                 className="w-full rounded border border-space-600 py-1.5 text-xs text-slate-400 hover:bg-space-700 transition-colors"
+                aria-label="复制诊断信息到剪贴板"
               >
                 复制诊断信息
+              </button>
+              <button
+                onClick={() => {
+                  // 下载 JSON 诊断包：Blob + URL.createObjectURL + 临时 <a download>
+                  const bundle = {
+                    schema: 'solar-system-diagnostics-bundle/v1',
+                    version: data.version,
+                    generated_at: new Date().toISOString(),
+                    data,
+                    frame_times: frameTimes.current.slice(),
+                  };
+                  const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+                    type: 'application/json',
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `diagnostics-${Date.now()}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  // 释放对象 URL，避免内存泄漏
+                  URL.revokeObjectURL(url);
+                }}
+                className="mt-1 w-full rounded border border-space-600 py-1.5 text-xs text-slate-400 hover:bg-space-700 transition-colors"
+                aria-label="下载 JSON 诊断包"
+              >
+                下载 JSON 诊断包
               </button>
             </div>
           </div>

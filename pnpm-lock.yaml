@@ -149,6 +149,9 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/diagnostics:
     devDependencies:
@@ -177,6 +180,9 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/render-engine:
     dependencies:
@@ -266,6 +272,9 @@ importers:
 
   packages/schemas:
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       ajv:
         specifier: ^8.17.1
         version: 8.20.0
@@ -287,12 +296,18 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/terrain-engine:
     dependencies:
       '@solar-system/render-engine':
         specifier: workspace:*
         version: link:../render-engine
+      '@solar-system/renderer-core':
+        specifier: workspace:*
+        version: link:../renderer-core
       '@solar-system/schemas':
         specifier: workspace:*
         version: link:../schemas
@@ -306,6 +321,9 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/tour-player:
     dependencies:
@@ -315,10 +333,19 @@ importers:
       '@solar-system/render-engine':
         specifier: workspace:*
         version: link:../render-engine
+      '@solar-system/renderer-core':
+        specifier: workspace:*
+        version: link:../renderer-core
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.20.1)
 
 packages:
 

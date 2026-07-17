@@ -133,8 +133,16 @@ export const DEFAULT_ATMOSPHERE_PARAMS: Record<BodyId, Partial<AtmosphereParams>
 };
 
 export const SOLAR_RADIUS_KM = 695700;
+
+/**
+ * Radii (km) for every body in the navigation catalog (Task T-P1-17 / fix E-43).
+ * Covers the sun, 8 planets, and all 58+ satellites / dwarf-planets / asteroids /
+ * comets so BodyRendererFactoryImpl can look up a radius for any supported body.
+ */
 export const PLANET_RADII_KM: Record<BodyId, number> = {
+  // Star
   10: SOLAR_RADIUS_KM,
+  // Planets
   199: 2439.7,
   299: 6051.8,
   399: 6371.0,
@@ -143,8 +151,91 @@ export const PLANET_RADII_KM: Record<BodyId, number> = {
   699: 58232,
   799: 25362,
   899: 24622,
+  // Earth satellite
   301: 1737.4,
+  // Mars satellites
+  401: 11.1,
+  402: 6.2,
+  // Jupiter satellites
+  501: 1821.6,
+  502: 1560.8,
+  503: 2634.1,
+  504: 2410.3,
+  505: 83.5,
+  506: 85,
+  // Saturn satellites
+  601: 198.2,
+  602: 252.1,
+  603: 533.1,
+  604: 561.4,
+  605: 764.3,
+  606: 2574.7,
+  607: 135,
+  608: 735.6,
+  // Uranus satellites
+  701: 578.9,
+  702: 584.7,
+  703: 788.9,
+  704: 761.4,
+  705: 235.8,
+  // Neptune satellites
+  801: 1353.4,
+  802: 170,
+  803: 33,
+  804: 41,
+  805: 75,
+  806: 88,
+  807: 97,
+  808: 210,
+  // Pluto satellites
+  1343401: 606,
+  1343402: 7.5,
+  1343403: 23,
+  1343404: 12,
+  1343405: 34,
+  // Dwarf planets
+  1: 473,
+  134340: 1188.3,
+  136199: 1163,
+  136472: 715,
+  136108: 640,
+  // Asteroids
+  433: 16.8,
+  101955: 0.25,
+  951: 8.5,
+  243: 14.4,
+  25143: 0.18,
+  // Comets (string IDs)
+  '1P': 11,
+  '19P': 4.8,
+  '81P': 2.7,
+  '9P': 3.0,
 };
+
+/**
+ * Body ID categories used by BodyRendererFactoryImpl to route bodies that fall
+ * outside the explicit switch (sun/earth/planets/moon) to the correct renderer.
+ * Mirrors the `type` field of navigation-service catalog entries.
+ */
+export const SATELLITE_BODY_IDS: ReadonlySet<number> = new Set<number>([
+  301, 401, 402, 501, 502, 503, 504, 505, 506,
+  601, 602, 603, 604, 605, 606, 607, 608,
+  701, 702, 703, 704, 705,
+  801, 802, 803, 804, 805, 806, 807, 808,
+  1343401, 1343402, 1343403, 1343404, 1343405,
+]);
+
+export const DWARF_PLANET_BODY_IDS: ReadonlySet<number> = new Set<number>([
+  1, 134340, 136199, 136472, 136108,
+]);
+
+export const ASTEROID_BODY_IDS: ReadonlySet<number> = new Set<number>([
+  433, 101955, 951, 243, 25143,
+]);
+
+export const COMET_BODY_IDS: ReadonlySet<string> = new Set<string>([
+  '1P', '19P', '81P', '9P',
+]);
 
 // ---------------------------------------------------------------------------
 // GPU resource plumbing (fixes audit error E-09).
@@ -177,6 +268,9 @@ const COLOR_SATURN: RGB = [0.9, 0.8, 0.6];
 const COLOR_URANUS: RGB = [0.6, 0.8, 0.85];
 const COLOR_NEPTUNE: RGB = [0.3, 0.5, 0.9];
 const COLOR_RING: RGB = [0.7, 0.7, 0.6];
+// E-43: irregular body (asteroid / comet nucleus) surface tints.
+const COLOR_ASTEROID: RGB = [0.45, 0.4, 0.35];
+const COLOR_COMET: RGB = [0.35, 0.35, 0.4];
 
 // Numeric body IDs (literal keys avoid `noUncheckedIndexedAccess` undefined
 // narrowing on PLANET_BODY_IDS, which is typed Record<string, BodyId>).
@@ -203,6 +297,18 @@ const GAS_GIANT_COLORS: Partial<Record<BodyId, RGB>> = {
   [ID_SATURN]: COLOR_SATURN,
   [ID_URANUS]: COLOR_URANUS,
   [ID_NEPTUNE]: COLOR_NEPTUNE,
+};
+
+/**
+ * E-43: base colors for asteroid / comet nuclei. Asteroids default to a rocky
+ * brown-gray; comet nuclei are darker and bluer. Bodies without an explicit
+ * entry fall back to COLOR_ASTEROID inside IrregularBodyRenderer.
+ */
+const IRREGULAR_BODY_COLORS: Partial<Record<BodyId, RGB>> = {
+  '1P': COLOR_COMET,
+  '19P': COLOR_COMET,
+  '81P': COLOR_COMET,
+  '9P': COLOR_COMET,
 };
 
 interface EmissiveMaterial {
@@ -619,6 +725,181 @@ function createRingGeometry(
   });
 
   return { vertexCount, indexCount, vertexBuffer, indexBuffer, innerRadius, outerRadius };
+}
+
+// ---------------------------------------------------------------------------
+// E-43: Irregular body geometry (asteroids / comet nuclei).
+//
+// Builds a UV sphere then perturbs each vertex's radius with a deterministic
+// 3D value noise (trilinearly interpolated hash lattice). The result is a
+// non-convex, lumpy surface that stands in for the procedurally generated
+// shape of small irregular bodies. Vertex layout matches BODY_VERTEX_ATTRIBUTES
+// (pos3 + normal3 + uv2 = 32 bytes) so BodyRenderResources can draw it.
+// ---------------------------------------------------------------------------
+
+export interface IrregularGeometryData extends BodyGeometry {
+  readonly radius: number;
+  readonly noiseAmplitude: number;
+  readonly noiseSeed: number;
+  /** Raw per-vertex positions (length = vertexCount * 3), kept for tests. */
+  readonly positions: Float32Array;
+}
+
+/** 32-bit hash → [0,1); deterministic value-noise lattice. */
+function hash3(x: number, y: number, z: number, seed: number): number {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 2147483647) ^ Math.imul(seed | 0, 974711);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967295;
+}
+
+/** Trilinearly interpolated 3D value noise, returns [0,1]. */
+function valueNoise3D(x: number, y: number, z: number, seed: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const zi = Math.floor(z);
+  const xf = x - xi;
+  const yf = y - yi;
+  const zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  const w = zf * zf * (3 - 2 * zf);
+  const c000 = hash3(xi, yi, zi, seed);
+  const c100 = hash3(xi + 1, yi, zi, seed);
+  const c010 = hash3(xi, yi + 1, zi, seed);
+  const c110 = hash3(xi + 1, yi + 1, zi, seed);
+  const c001 = hash3(xi, yi, zi + 1, seed);
+  const c101 = hash3(xi + 1, yi, zi + 1, seed);
+  const c011 = hash3(xi, yi + 1, zi + 1, seed);
+  const c111 = hash3(xi + 1, yi + 1, zi + 1, seed);
+  const x00 = c000 * (1 - u) + c100 * u;
+  const x10 = c010 * (1 - u) + c110 * u;
+  const x01 = c001 * (1 - u) + c101 * u;
+  const x11 = c011 * (1 - u) + c111 * u;
+  const y0 = x00 * (1 - v) + x10 * v;
+  const y1 = x01 * (1 - v) + x11 * v;
+  return y0 * (1 - w) + y1 * w;
+}
+
+/** Fractal Brownian motion summation of value noise; returns [0, ~2]. */
+function fbm3D(x: number, y: number, z: number, seed: number, octaves: number = 3): number {
+  let sum = 0;
+  let amp = 1;
+  let freq = 1;
+  let norm = 0;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * valueNoise3D(x * freq, y * freq, z * freq, seed + o * 101);
+    norm += amp;
+    amp *= 0.5;
+    freq *= 2;
+  }
+  return sum / norm;
+}
+
+/**
+ * Builds a noise-perturbed sphere. `noiseAmplitude` is a fraction of `radius`
+ * (e.g. 0.15 → ±15% radius deformation). The perturbation is sampled from the
+ * direction vector so the surface is deterministic and stable across frames.
+ */
+export function createIrregularGeometry(
+  renderer: Renderer,
+  radius: number,
+  widthSegments: number = 24,
+  heightSegments: number = 12,
+  noiseAmplitude: number = 0.15,
+  noiseSeed: number = 0,
+): IrregularGeometryData {
+  const vertexCols = widthSegments + 1;
+  const vertexRows = heightSegments + 1;
+  const vertexCount = vertexCols * vertexRows;
+  const indexCount = widthSegments * heightSegments * 6;
+
+  const positions = new Float32Array(vertexCount * 3);
+  const interleaved = new Float32Array(vertexCount * 8);
+  const indices = new Uint32Array(indexCount);
+
+  const twoPi = Math.PI * 2;
+  const amp = radius * noiseAmplitude;
+
+  for (let j = 0; j < vertexRows; j++) {
+    const phi = (j / heightSegments) * Math.PI;
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
+    const v = j / heightSegments;
+
+    for (let i = 0; i < vertexCols; i++) {
+      const theta = (i / widthSegments) * twoPi;
+      const sinTheta = Math.sin(theta);
+      const cosTheta = Math.cos(theta);
+
+      const dirX = sinPhi * cosTheta;
+      const dirY = cosPhi;
+      const dirZ = sinPhi * sinTheta;
+
+      // Sample fbm on the unit direction so the deformation is shape-driven.
+      const n = fbm3D(dirX * 2.1, dirY * 2.1, dirZ * 2.1, noiseSeed, 3); // [0,1]
+      const r = radius + amp * (n * 2 - 1);
+
+      const px = r * dirX;
+      const py = r * dirY;
+      const pz = r * dirZ;
+
+      const vertexIndex = j * vertexCols + i;
+      const p = vertexIndex * 3;
+      const off = vertexIndex * 8;
+
+      positions[p] = px;
+      positions[p + 1] = py;
+      positions[p + 2] = pz;
+
+      interleaved[off] = px;
+      interleaved[off + 1] = py;
+      interleaved[off + 2] = pz;
+      interleaved[off + 3] = dirX;
+      interleaved[off + 4] = dirY;
+      interleaved[off + 5] = dirZ;
+      interleaved[off + 6] = i / widthSegments;
+      interleaved[off + 7] = v;
+    }
+  }
+
+  let idx = 0;
+  for (let j = 0; j < heightSegments; j++) {
+    for (let i = 0; i < widthSegments; i++) {
+      const a = j * vertexCols + i;
+      const b = j * vertexCols + i + 1;
+      const c = (j + 1) * vertexCols + i;
+      const d = (j + 1) * vertexCols + i + 1;
+      indices[idx++] = a;
+      indices[idx++] = c;
+      indices[idx++] = b;
+      indices[idx++] = b;
+      indices[idx++] = c;
+      indices[idx++] = d;
+    }
+  }
+
+  const vertexBuffer = renderer.createBuffer({
+    size: interleaved.byteLength,
+    usage: 'static',
+    data: interleaved.buffer,
+  });
+  const indexBuffer = renderer.createBuffer({
+    size: indices.byteLength,
+    usage: 'static',
+    data: indices.buffer,
+  });
+
+  return {
+    vertexCount,
+    indexCount,
+    vertexBuffer,
+    indexBuffer,
+    radius,
+    noiseAmplitude,
+    noiseSeed,
+    positions,
+  };
 }
 
 export class SunRendererImpl implements SunRenderer {
@@ -1249,6 +1530,145 @@ export class RingRendererImpl implements RingRenderer {
   }
 }
 
+// ---------------------------------------------------------------------------
+// E-43: IrregularBodyRenderer for asteroids / comet nuclei.
+//
+// Uses createIrregularGeometry (noise-perturbed sphere) and drives the same
+// BodyRenderResources GPU path as the other body renderers, reusing the PBR
+// fragment shader since asteroid / comet surfaces are rocky and lit by the sun.
+// ---------------------------------------------------------------------------
+
+export class IrregularBodyRenderer implements BodyRenderer {
+  bodyId: BodyId;
+  assetTier: AssetTier;
+  enabled = true;
+
+  private readonly renderer: Renderer | null;
+  private readonly radius: number;
+  private readonly noiseAmplitude: number;
+  private readonly noiseSeed: number;
+  private readonly material: PbrMaterial;
+
+  private currentTime = 0;
+  private currentPosition: Vec3d = { x: 0, y: 0, z: 0 };
+  private currentOrientation: Quat = { w: 1, x: 0, y: 0, z: 0 };
+  private currentSunDirection: Vec3d = { x: 0, y: 0, z: 1 };
+  private lodLevel = 0;
+
+  private geometry: IrregularGeometryData | null = null;
+  private resources: BodyRenderResources | null = null;
+
+  constructor(
+    bodyId: BodyId,
+    renderer: Renderer | null = null,
+    options: {
+      assetTier?: AssetTier;
+      radius?: number;
+      baseColor?: RGB;
+      roughness?: number;
+      metalness?: number;
+      noiseAmplitude?: number;
+      noiseSeed?: number;
+    } = {},
+  ) {
+    this.bodyId = bodyId;
+    this.assetTier = options.assetTier ?? 'B';
+    this.renderer = renderer;
+    const fallbackRadius = (PLANET_RADII_KM[bodyId] ?? 1) * 1000;
+    this.radius = options.radius ?? fallbackRadius;
+    // Smaller bodies get lumpier (more irregular) profiles.
+    this.noiseAmplitude = options.noiseAmplitude ?? 0.2;
+    this.noiseSeed = options.noiseSeed ?? (typeof bodyId === 'number' ? bodyId % 4096 : bodyId.length * 7);
+    this.material = {
+      shader: 'pbr',
+      baseColor: options.baseColor ?? IRREGULAR_BODY_COLORS[bodyId] ?? COLOR_ASTEROID,
+      roughness: options.roughness ?? 0.95,
+      metalness: options.metalness ?? 0.0,
+    };
+  }
+
+  update(time: number, position: Vec3d, orientation: Quat, sunDirection: Vec3d): void {
+    this.currentTime = time;
+    this.currentPosition = position;
+    this.currentOrientation = orientation;
+    this.currentSunDirection = sunDirection;
+  }
+
+  render(): void {
+    const renderer = this.renderer;
+    if (!renderer) return;
+    this.ensureResources(renderer);
+    this.resources!.render(this.packUniforms());
+  }
+
+  private packUniforms(): ArrayBuffer {
+    const out = new Float32Array(UNIFORM_FLOATS);
+    packCommonUniforms(
+      out,
+      this.currentPosition,
+      this.currentOrientation,
+      this.currentTime,
+      this.lodLevel,
+      this.currentSunDirection,
+    );
+    const [r, g, b] = this.material.baseColor;
+    out[24] = r;
+    out[25] = g;
+    out[26] = b;
+    out[27] = this.material.roughness;
+    out[28] = this.material.metalness;
+    return out.buffer as ArrayBuffer;
+  }
+
+  private ensureResources(renderer: Renderer): void {
+    if (this.resources) return;
+    const segments = this.lodLevel >= 2 ? 32 : this.lodLevel >= 1 ? 24 : 16;
+    this.geometry = createIrregularGeometry(
+      renderer,
+      this.radius,
+      segments,
+      Math.max(8, segments >> 1),
+      this.noiseAmplitude,
+      this.noiseSeed,
+    );
+    this.resources = new BodyRenderResources(
+      renderer,
+      this.geometry,
+      {
+        vertexShader: { stage: 'vertex', source: SPHERE_VERTEX_SHADER, entryPoint: 'vs_main' },
+        fragmentShader: { stage: 'fragment', source: PBR_FRAGMENT_SHADER, entryPoint: 'fs_main' },
+        vertexAttributes: BODY_VERTEX_ATTRIBUTES,
+        topology: 'triangles',
+        depthTest: true,
+        depthWrite: true,
+        cullMode: 'none',
+      },
+      this.packUniforms(),
+    );
+  }
+
+  dispose(): void {
+    if (this.resources) {
+      this.resources.dispose();
+      this.resources = null;
+    }
+    this.geometry = null;
+  }
+
+  getBoundingRadius(): number {
+    // Worst-case bounding radius accounts for the noise bulge.
+    return this.radius * (1 + this.noiseAmplitude);
+  }
+
+  setLOD(level: number): void {
+    this.lodLevel = level;
+  }
+
+  getIrregularGeometry(): IrregularGeometryData | null {
+    return this.geometry;
+  }
+}
+
 export class BodyRendererFactoryImpl implements BodyRendererFactory {
   private renderers: Map<BodyId, BodyRenderer> = new Map();
   private readonly renderer: Renderer | null;
@@ -1284,8 +1704,19 @@ export class BodyRendererFactoryImpl implements BodyRendererFactory {
       case ID_MOON:
         renderer = new SolidPlanetRenderer(bodyId, this.renderer);
         break;
-      default:
-        renderer = null;
+      default: {
+        // E-43: extend coverage to satellites, dwarf-planets, asteroids, comets.
+        if (typeof bodyId === 'string') {
+          if (COMET_BODY_IDS.has(bodyId)) {
+            renderer = new IrregularBodyRenderer(bodyId, this.renderer);
+          }
+        } else if (ASTEROID_BODY_IDS.has(bodyId)) {
+          renderer = new IrregularBodyRenderer(bodyId, this.renderer);
+        } else if (SATELLITE_BODY_IDS.has(bodyId) || DWARF_PLANET_BODY_IDS.has(bodyId)) {
+          renderer = new SolidPlanetRenderer(bodyId, this.renderer);
+        }
+        break;
+      }
     }
 
     if (renderer && options) {

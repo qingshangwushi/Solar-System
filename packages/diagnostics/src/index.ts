@@ -143,9 +143,12 @@ export async function detectWebgpu(): Promise<CapabilityDetection['webgpu']> {
     const requestDevice = (adapter as unknown as { requestDevice(): Promise<unknown> }).requestDevice;
     const limits = await requestDevice().then(
       (dev) => {
-        const d = dev as { limits: Record<string, number | undefined> };
+        const d = dev as {
+          limits: Record<string, number | undefined>;
+          destroy?: () => void;
+        };
         const limit = (key: string): number => d.limits[key] ?? 0;
-        return {
+        const result = {
           maxTextureDimension2D: limit('maxTextureDimension2D'),
           maxTextureDimension3D: limit('maxTextureDimension3D'),
           maxTextureArrayLayers: limit('maxTextureArrayLayers'),
@@ -155,6 +158,9 @@ export async function detectWebgpu(): Promise<CapabilityDetection['webgpu']> {
           maxVertexAttributes: limit('maxVertexAttributes'),
           maxVertexBufferArrayStride: limit('maxVertexBufferArrayStride'),
         };
+        // E-36: 读取 limits 后立即销毁临时 device，避免设备泄漏
+        d.destroy?.();
+        return result;
       },
       () => null,
     );
