@@ -66,6 +66,77 @@ export function alignTo(value: number, alignment: number): number {
   return Math.ceil(value / alignment) * alignment;
 }
 
+/**
+ * WebGPU GPUBufferUsage 本地副本常量。
+ * 仅在 globalThis.GPUBufferUsage 不可用时（如 Node 测试环境无 WebGPU 运行时）作为回退使用。
+ * 值与 WebGPU 规范定义的 GPUBufferUsage 命名常量一致。
+ */
+const GPU_BUFFER_USAGE = {
+  MAP_READ: 1,
+  MAP_WRITE: 2,
+  COPY_SRC: 4,
+  COPY_DST: 8,
+  INDEX: 16,
+  VERTEX: 32,
+  STORAGE: 64,
+  INDIRECT: 128,
+  QUERY_RESOLVE: 256,
+};
+
+/**
+ * WebGPU GPUTextureUsage 本地副本常量。
+ * 仅在 globalThis.GPUTextureUsage 不可用时（如 Node 测试环境无 WebGPU 运行时）作为回退使用。
+ * 值与 WebGPU 规范定义的 GPUTextureUsage 命名常量一致。
+ */
+const GPU_TEXTURE_USAGE = {
+  COPY_SRC: 1,
+  COPY_DST: 2,
+  TEXTURE_BINDING: 4,
+  STORAGE_BINDING: 8,
+  RENDER_ATTACHMENT: 16,
+};
+
+interface BufferUsageConstants {
+  readonly MAP_READ: number;
+  readonly MAP_WRITE: number;
+  readonly COPY_SRC: number;
+  readonly COPY_DST: number;
+  readonly INDEX: number;
+  readonly VERTEX: number;
+  readonly STORAGE: number;
+  readonly INDIRECT: number;
+  readonly QUERY_RESOLVE: number;
+}
+
+interface TextureUsageConstants {
+  readonly COPY_SRC: number;
+  readonly COPY_DST: number;
+  readonly TEXTURE_BINDING: number;
+  readonly STORAGE_BINDING: number;
+  readonly RENDER_ATTACHMENT: number;
+}
+
+interface GlobalWithWebGPU {
+  GPUBufferUsage?: BufferUsageConstants;
+  GPUTextureUsage?: TextureUsageConstants;
+}
+
+/**
+ * 获取 WebGPU buffer usage 常量：优先使用官方 globalThis.GPUBufferUsage 命名空间，
+ * 缺省时回退到本地副本（Node 环境无 WebGPU 运行时）。
+ */
+export function getBufferUsage(): BufferUsageConstants {
+  return (globalThis as unknown as GlobalWithWebGPU).GPUBufferUsage ?? GPU_BUFFER_USAGE;
+}
+
+/**
+ * 获取 WebGPU texture usage 常量：优先使用官方 globalThis.GPUTextureUsage 命名空间，
+ * 缺省时回退到本地副本（Node 环境无 WebGPU 运行时）。
+ */
+export function getTextureUsage(): TextureUsageConstants {
+  return (globalThis as unknown as GlobalWithWebGPU).GPUTextureUsage ?? GPU_TEXTURE_USAGE;
+}
+
 class WebGpuRenderer implements Renderer {
   readonly backend: BackendType = 'webgpu';
   capabilities: RendererCapabilities;
@@ -167,7 +238,7 @@ class WebGpuRenderer implements Renderer {
 
     const buffer = createBuffer({
       size: desc.size,
-      usage: desc.usage === 'dynamic' ? 12 : 8,
+      usage: desc.usage === 'dynamic' ? getBufferUsage().COPY_SRC | getBufferUsage().COPY_DST : getBufferUsage().COPY_DST,
       mappedAtCreation: !!desc.data,
     });
 
@@ -212,7 +283,10 @@ class WebGpuRenderer implements Renderer {
     const texture = createTexture({
       size: { width: desc.width, height: desc.height },
       format: desc.format,
-      usage: desc.usage === 'render_target' ? 24 : 18,
+      usage:
+        desc.usage === 'render_target'
+          ? getTextureUsage().STORAGE_BINDING | getTextureUsage().RENDER_ATTACHMENT
+          : getTextureUsage().COPY_DST | getTextureUsage().RENDER_ATTACHMENT,
       mipLevelCount: desc.mipmap ? Math.floor(Math.log2(Math.max(desc.width, desc.height))) + 1 : 1,
     });
 
@@ -384,7 +458,7 @@ class WebGpuRenderer implements Renderer {
     const createBuffer = (this.device as unknown as { createBuffer(config: unknown): unknown }).createBuffer;
     const buffer = createBuffer({
       size: width * height * 4,
-      usage: 1,
+      usage: getBufferUsage().MAP_READ,
     });
 
     const commandEncoder = (this.device as unknown as { createCommandEncoder(): unknown }).createCommandEncoder();

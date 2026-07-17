@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { WebGpuRenderer, WebGpuRendererFactory, bytesPerPixel, alignTo } from '../index.js';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { WebGpuRenderer, WebGpuRendererFactory, bytesPerPixel, alignTo, getBufferUsage, getTextureUsage } from '../index.js';
 
 describe('WebGPU Renderer', () => {
   it('应创建后端类型为 webgpu 的渲染器', () => {
@@ -164,5 +164,61 @@ describe('WebGPU submit (E-01)', () => {
     renderer.submit();
     expect(submitted.length).toBe(1);
     expect(submitted[0]!.length).toBe(0);
+  });
+});
+
+describe('WebGPU usage 命名常量回退 (E-05)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('globalThis.GPUBufferUsage 存在时优先使用官方常量', () => {
+    vi.stubGlobal('GPUBufferUsage', {
+      MAP_READ: 800,
+      MAP_WRITE: 2,
+      COPY_SRC: 4,
+      COPY_DST: 8,
+      INDEX: 16,
+      VERTEX: 32,
+      STORAGE: 64,
+      INDIRECT: 128,
+      QUERY_RESOLVE: 256,
+    });
+    const usage = getBufferUsage();
+    expect(usage.MAP_READ).toBe(800);
+    expect(usage.COPY_SRC).toBe(4);
+    expect(usage.COPY_DST).toBe(8);
+  });
+
+  it('globalThis.GPUBufferUsage 缺省时回退本地副本', () => {
+    const usage = getBufferUsage();
+    expect(usage.MAP_READ).toBe(1);
+    expect(usage.MAP_WRITE).toBe(2);
+    expect(usage.COPY_SRC).toBe(4);
+    expect(usage.COPY_DST).toBe(8);
+    expect(usage.QUERY_RESOLVE).toBe(256);
+  });
+
+  it('globalThis.GPUTextureUsage 存在时优先使用官方常量', () => {
+    vi.stubGlobal('GPUTextureUsage', {
+      COPY_SRC: 1,
+      COPY_DST: 2,
+      TEXTURE_BINDING: 4,
+      STORAGE_BINDING: 8,
+      RENDER_ATTACHMENT: 900,
+    });
+    const usage = getTextureUsage();
+    expect(usage.RENDER_ATTACHMENT).toBe(900);
+    expect(usage.COPY_DST).toBe(2);
+    expect(usage.STORAGE_BINDING).toBe(8);
+  });
+
+  it('globalThis.GPUTextureUsage 缺省时回退本地副本', () => {
+    const usage = getTextureUsage();
+    expect(usage.COPY_SRC).toBe(1);
+    expect(usage.COPY_DST).toBe(2);
+    expect(usage.TEXTURE_BINDING).toBe(4);
+    expect(usage.STORAGE_BINDING).toBe(8);
+    expect(usage.RENDER_ATTACHMENT).toBe(16);
   });
 });
