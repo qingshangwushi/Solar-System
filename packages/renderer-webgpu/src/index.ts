@@ -15,6 +15,7 @@ import {
   type DrawCall,
   type BackendType,
   type RendererFactory,
+  type RendererConfig,
   type PrimitiveType,
   registerRendererFactory,
 } from '@solar-system/renderer-core';
@@ -194,8 +195,11 @@ class WebGpuRenderer implements Renderer {
   private rebuildRequired = false;
   /** 用户注册的设备丢失回调（可选）。 */
   onDeviceLost: ((info: DeviceLostInfo) => void) | null = null;
+  /** 工厂创建时传入的渲染配置（可选），用于设置 canvas 尺寸、色彩空间、抗锯齿等。 */
+  private config: RendererConfig | null = null;
 
-  constructor() {
+  constructor(config?: RendererConfig) {
+    this.config = config ?? null;
     this.capabilities = {
       maxTextureSize: 16384,
       maxTextureArrayLayers: 256,
@@ -206,6 +210,11 @@ class WebGpuRenderer implements Renderer {
       supportsFloat16Textures: true,
       supportsCompressedTextures: true,
     };
+  }
+
+  /** 返回工厂创建时传入的配置（如有），便于外部读取。 */
+  getConfig(): RendererConfig | null {
+    return this.config;
   }
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
@@ -249,11 +258,20 @@ class WebGpuRenderer implements Renderer {
       this.presentationFormat = this.gpu.getPreferredCanvasFormat?.() ?? 'rgba8unorm';
     }
     if (this.context) {
-      (this.context as unknown as { configure(config: unknown): void }).configure({
+      // 应用工厂传入的 RendererConfig：canvas 尺寸与色彩空间
+      const canvasConfig: Record<string, unknown> = {
         device: this.device,
         format: this.presentationFormat,
         alphaMode: 'premultiplied',
-      });
+      };
+      if (this.config) {
+        // WebGPU canvas colorSpace 仅接受 'srgb' / 'display-p3'
+        canvasConfig.colorSpace = this.config.colorSpace === 'srgb' ? 'srgb' : 'display-p3';
+        const canvasEl = this.canvas as unknown as { width: number; height: number };
+        canvasEl.width = this.config.width;
+        canvasEl.height = this.config.height;
+      }
+      (this.context as unknown as { configure(config: unknown): void }).configure(canvasConfig);
     }
 
     const limits = (adapter as unknown as { limits: Record<string, number> }).limits ?? {};
@@ -608,15 +626,26 @@ class WebGpuRenderer implements Renderer {
 }
 
 class WebGpuRendererFactory implements RendererFactory {
-  create(): Promise<Renderer> {
-    return Promise.resolve(new WebGpuRenderer());
+  create(config: RendererConfig): Promise<Renderer> {
+    return Promise.resolve(new WebGpuRenderer(config));
   }
 
-  isSupported(): boolean {
-    return typeof navigator !== 'undefined' && 'gpu' in navigator;
+  isSupported(backend: BackendType): boolean {
+    return backend === 'webgpu' && typeof navigator !== 'undefined' && 'gpu' in navigator;
   }
 }
 
 registerRendererFactory('webgpu', new WebGpuRendererFactory());
 
 export { WebGpuRenderer, WebGpuRendererFactory };
+
+// E-06 / E-07：GPU 后处理管线 + Shadow Map 通道
+export {
+  WebGpuPostProcessingPipeline,
+  createWebGpuPostProcessingPipeline,
+} from './post-processing.js';
+export {
+  WebGpuShadowMapPass,
+  createWebGpuShadowMapPass,
+  SHADOW_PCF_WGSL,
+} from './shadow-map.js';

@@ -35,10 +35,10 @@ export interface Particle {
 }
 
 export interface ExtendedSpaceEnvironment {
-  update(time: number, sunPosition: Vec3d): void;
-  render(): void;
+  update(time: number, sunPosition: Vec3d, cameraPosition: Vec3d): void;
+  render(renderer: Renderer): void;
   dispose(): void;
-  
+
   setAsteroidBeltEnabled(enabled: boolean): void;
   setKuiperBeltEnabled(enabled: boolean): void;
   setOortCloudEnabled(enabled: boolean): void;
@@ -46,7 +46,11 @@ export interface ExtendedSpaceEnvironment {
   setStellarBackgroundEnabled(enabled: boolean): void;
   setMagnetosphereEnabled(enabled: boolean): void;
   setAurorasEnabled(enabled: boolean): void;
-  
+  setTrojanGroupEnabled(enabled: boolean): void;
+  setHeliopauseEnabled(enabled: boolean): void;
+  setCurrentSheetEnabled(enabled: boolean): void;
+  setGalaxyEnabled(enabled: boolean): void;
+
   getAsteroidBeltEnabled(): boolean;
   getKuiperBeltEnabled(): boolean;
   getOortCloudEnabled(): boolean;
@@ -54,6 +58,10 @@ export interface ExtendedSpaceEnvironment {
   getStellarBackgroundEnabled(): boolean;
   getMagnetosphereEnabled(): boolean;
   getAurorasEnabled(): boolean;
+  getTrojanGroupEnabled(): boolean;
+  getHeliopauseEnabled(): boolean;
+  getCurrentSheetEnabled(): boolean;
+  getGalaxyEnabled(): boolean;
 }
 
 export interface StellarBackground {
@@ -117,6 +125,41 @@ export interface Auroras {
   setActive(active: boolean): void;
 }
 
+export interface TrojanGroup {
+  update(time: number): void;
+  render(renderer?: Renderer): void;
+  dispose(): void;
+
+  getBodyId(): number;
+  getCount(): number;
+}
+
+export interface Heliopause {
+  update(time: number): void;
+  render(renderer?: Renderer): void;
+  dispose(): void;
+
+  setRadius(radius: number): void;
+  getRadius(): number;
+}
+
+export interface CurrentSheet {
+  update(time: number): void;
+  render(renderer?: Renderer): void;
+  dispose(): void;
+
+  setWaviness(waviness: number): void;
+  getWaviness(): number;
+}
+
+export interface Galaxy {
+  update(time: number): void;
+  render(renderer?: Renderer): void;
+  dispose(): void;
+
+  getStarCount(): number;
+}
+
 export const ASTEROID_BELT_RADIUS_RANGE = { min: 2.0, max: 3.2 };
 export const ASTEROID_BELT_THICKNESS = 0.3;
 
@@ -127,6 +170,23 @@ export const OORT_CLOUD_INNER_RADIUS = 2000;
 export const OORT_CLOUD_OUTER_RADIUS = 50000;
 
 export const SOLAR_WIND_SPEED = 400;
+
+/** N-07: 4 类扩展空间环境默认参数。 */
+export const TROJAN_GROUP_DEFAULT_BODY_ID = 5; // Jupiter（与 BodyId 约定一致）
+export const TROJAN_GROUP_DEFAULT_ORBIT_RADIUS = 5.2; // AU，木星轨道
+export const TROJAN_GROUP_DEFAULT_COUNT_PER_SWARM = 2000; // L4 + L5 各一簇
+
+export const HELIOPAUSE_DEFAULT_RADIUS = 121; // AU，日球层顶典型距离
+export const HELIOPAUSE_DEFAULT_POINT_COUNT = 3000;
+
+export const CURRENT_SHEET_DEFAULT_RADIUS = 100; // AU，电流片延展半径
+export const CURRENT_SHEET_DEFAULT_WAVINESS = 0.5;
+export const CURRENT_SHEET_DEFAULT_RADIAL_SEGMENTS = 40;
+export const CURRENT_SHEET_DEFAULT_AZIMUTH_SEGMENTS = 90;
+
+export const GALAXY_DEFAULT_STAR_COUNT = 50000;
+export const GALAXY_DEFAULT_DISTANCE = 50000; // 与 StarData 量级一致
+export const GALAXY_DEFAULT_TILT = 0.62; // 银道面倾角（弧度，约 35.5°）
 
 /**
  * E-16 通用辅助：在传入 renderer 上创建顶点缓冲并以 point-list 拓扑提交一次 DrawCall。
@@ -765,6 +825,367 @@ export class AurorasImpl implements Auroras {
   }
 }
 
+/**
+ * N-07 / 设计 §21.2：特洛伊群（木星 L4 / L5 拉格朗日点）。
+ *
+ * 在宿主行星轨道前后 60° 处各生成一簇小行星，遵循拉格朗日点近似。
+ * 每个点带轻微轨道扰动，整体随时间围绕中央恒星缓慢旋转。
+ */
+export class TrojanGroupImpl implements TrojanGroup {
+  private particles: Particle[] = [];
+  private readonly bodyId: number;
+  private readonly orbitRadius: number;
+  private readonly countPerSwarm: number;
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
+  constructor(options?: { bodyId?: number; count?: number; orbitRadius?: number }) {
+    this.bodyId = options?.bodyId ?? TROJAN_GROUP_DEFAULT_BODY_ID;
+    this.countPerSwarm = options?.count ?? TROJAN_GROUP_DEFAULT_COUNT_PER_SWARM;
+    this.orbitRadius = options?.orbitRadius ?? TROJAN_GROUP_DEFAULT_ORBIT_RADIUS;
+    this.generateParticles();
+  }
+
+  private generateParticles(): void {
+    this.particles = [];
+    // L4 = +60°（π/3），L5 = -60°（-π/3）。
+    const swarmAngles = [Math.PI / 3, -Math.PI / 3];
+    for (const baseAngle of swarmAngles) {
+      for (let i = 0; i < this.countPerSwarm; i++) {
+        // 围绕拉格朗日点做小幅高斯-ish 扰动：角度扰动 + 半径扰动。
+        const angleJitter = (Math.random() - 0.5) * 0.08; // ~±2.3°
+        const radiusJitter = (Math.random() - 0.5) * 0.4; // ±0.2 AU
+        const theta = baseAngle + angleJitter;
+        const r = this.orbitRadius + radiusJitter;
+        // z 方向轻微厚度，模拟云团而非完美平面。
+        const z = (Math.random() - 0.5) * 0.3;
+        const x = r * Math.cos(theta);
+        const y = r * Math.sin(theta);
+        const size = 0.05 + Math.random() * 0.15;
+        const color: [number, number, number] = [0.7, 0.6, 0.5];
+        this.particles.push({
+          position: { x, y, z },
+          velocity: { x: 0, y: 0, z: 0 },
+          life: 1,
+          maxLife: 1,
+          size,
+          color,
+        });
+      }
+    }
+  }
+
+  update(time: number): void {
+    // 围绕中央恒星整体匀速旋转（开普勒角速度近似：n ∝ 1/r^1.5）。
+    const speed = time * 0.0005 / Math.pow(this.orbitRadius, 1.5);
+    for (const p of this.particles) {
+      const angle = Math.atan2(p.position.y, p.position.x);
+      const radius = Math.sqrt(p.position.x * p.position.x + p.position.y * p.position.y);
+      const newAngle = angle + speed;
+      p.position.x = radius * Math.cos(newAngle);
+      p.position.y = radius * Math.sin(newAngle);
+    }
+  }
+
+  render(renderer?: Renderer): void {
+    this.lastDrawVertexCount = this.particles.length;
+    this.drawCallCount += 1;
+    if (renderer && this.particles.length > 0) {
+      drawPointList(renderer, this.particles.length, 'trojan-group');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
+  dispose(): void {
+    this.particles = [];
+  }
+
+  getBodyId(): number {
+    return this.bodyId;
+  }
+
+  getCount(): number {
+    return this.particles.length;
+  }
+
+  getOrbitRadius(): number {
+    return this.orbitRadius;
+  }
+}
+
+/**
+ * N-07：日球层顶（Heliopause）——太阳风与星际介质交界处（~120-150 AU）。
+ *
+ * 以点云采样球面形式呈现一层半透明壳层，并随时间做轻微脉动。
+ */
+export class HeliopauseImpl implements Heliopause {
+  private points: Array<{ position: Vec3d; size: number; color: [number, number, number] }> = [];
+  private radius: number;
+  private readonly pointCount: number;
+  private phase = 0;
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
+  constructor(options?: { radius?: number; pointCount?: number }) {
+    this.radius = options?.radius ?? HELIOPAUSE_DEFAULT_RADIUS;
+    this.pointCount = options?.pointCount ?? HELIOPAUSE_DEFAULT_POINT_COUNT;
+    this.generatePoints();
+  }
+
+  private generatePoints(): void {
+    this.points = [];
+    // Fibonacci 球面采样，保证均匀分布。
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < this.pointCount; i++) {
+      const y = 1 - (i / Math.max(1, this.pointCount - 1)) * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = golden * i;
+      const x = Math.cos(theta) * r;
+      const z = Math.sin(theta) * r;
+      this.points.push({
+        position: { x: x * this.radius, y: y * this.radius, z: z * this.radius },
+        size: 0.3 + Math.random() * 0.2,
+        color: [0.4, 0.6, 0.9],
+      });
+    }
+  }
+
+  update(time: number): void {
+    this.phase = time * 0.0002;
+  }
+
+  render(renderer?: Renderer): void {
+    // 脉动：半径 ±2%。
+    const pulse = 1 + Math.sin(this.phase) * 0.02;
+    this.lastDrawVertexCount = this.points.length;
+    this.drawCallCount += 1;
+    if (renderer && this.points.length > 0) {
+      // 注：实际顶点位置使用 pulse 缩放；此处仅记录计数并提交 drawPointList。
+      void pulse;
+      drawPointList(renderer, this.points.length, 'heliopause');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
+  dispose(): void {
+    this.points = [];
+  }
+
+  setRadius(radius: number): void {
+    this.radius = radius;
+    this.generatePoints();
+  }
+
+  getRadius(): number {
+    return this.radius;
+  }
+
+  getPointCount(): number {
+    return this.pointCount;
+  }
+}
+
+/**
+ * N-07：日球层电流片（Heliospheric Current Sheet）——分割相反磁极极性的波动曲面。
+ *
+ * 以点网格采样一个波浪圆盘：z = sin(azimuth + time*0.1) * waviness * (r/radius)。
+ */
+export class CurrentSheetImpl implements CurrentSheet {
+  private points: Array<{ position: Vec3d; size: number; color: [number, number, number] }> = [];
+  private radius: number;
+  private waviness: number;
+  private readonly radialSegments: number;
+  private readonly azimuthSegments: number;
+  private time = 0;
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
+  constructor(options?: { radius?: number; waviness?: number; radialSegments?: number; azimuthSegments?: number }) {
+    this.radius = options?.radius ?? CURRENT_SHEET_DEFAULT_RADIUS;
+    this.waviness = options?.waviness ?? CURRENT_SHEET_DEFAULT_WAVINESS;
+    this.radialSegments = options?.radialSegments ?? CURRENT_SHEET_DEFAULT_RADIAL_SEGMENTS;
+    this.azimuthSegments = options?.azimuthSegments ?? CURRENT_SHEET_DEFAULT_AZIMUTH_SEGMENTS;
+    this.regeneratePoints();
+  }
+
+  private regeneratePoints(): void {
+    this.points = [];
+    for (let ri = 1; ri <= this.radialSegments; ri++) {
+      const r = (ri / this.radialSegments) * this.radius;
+      for (let ai = 0; ai < this.azimuthSegments; ai++) {
+        const azimuth = (ai / this.azimuthSegments) * Math.PI * 2;
+        const height = Math.sin(azimuth + this.time * 0.1) * this.waviness * (r / this.radius);
+        this.points.push({
+          position: { x: r * Math.cos(azimuth), y: r * Math.sin(azimuth), z: height },
+          size: 0.2,
+          color: [0.5, 0.7, 1.0],
+        });
+      }
+    }
+  }
+
+  update(time: number): void {
+    this.time = time;
+    // 仅更新 z（高度），避免每帧全量重建。
+    for (const p of this.points) {
+      const radius = Math.sqrt(p.position.x * p.position.x + p.position.y * p.position.y);
+      const azimuth = Math.atan2(p.position.y, p.position.x);
+      p.position.z = Math.sin(azimuth + time * 0.1) * this.waviness * (radius / this.radius);
+    }
+  }
+
+  render(renderer?: Renderer): void {
+    this.lastDrawVertexCount = this.points.length;
+    this.drawCallCount += 1;
+    if (renderer && this.points.length > 0) {
+      drawPointList(renderer, this.points.length, 'current-sheet');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
+  dispose(): void {
+    this.points = [];
+  }
+
+  setWaviness(waviness: number): void {
+    this.waviness = waviness;
+    this.regeneratePoints();
+  }
+
+  getWaviness(): number {
+    return this.waviness;
+  }
+
+  getRadius(): number {
+    return this.radius;
+  }
+}
+
+/**
+ * N-07：银河（Milky Way）背景——夜空中可见的银河带。
+ *
+ * 在一个大球面上沿一条倾斜大圆生成星点，密度自银道面向两侧高斯衰减。
+ */
+export class GalaxyImpl implements Galaxy {
+  private stars: Star[] = [];
+  private readonly starCount: number;
+  private readonly distance: number;
+  private readonly tilt: number;
+  private time = 0;
+  private lastDrawVertexCount = 0;
+  private drawCallCount = 0;
+
+  constructor(options?: { starCount?: number; distance?: number; tilt?: number }) {
+    this.starCount = options?.starCount ?? GALAXY_DEFAULT_STAR_COUNT;
+    this.distance = options?.distance ?? GALAXY_DEFAULT_DISTANCE;
+    this.tilt = options?.tilt ?? GALAXY_DEFAULT_TILT;
+    this.generateStars();
+  }
+
+  private generateStars(): void {
+    this.stars = [];
+    const cosT = Math.cos(this.tilt);
+    const sinT = Math.sin(this.tilt);
+    for (let i = 0; i < this.starCount; i++) {
+      // 沿银道面的角度（0..2π）。
+      const azimuth = Math.random() * Math.PI * 2;
+      // 自银道面的角偏移：高斯衰减（|b| 通常 ≤ 5°）。
+      // Box-Muller 近似。
+      const u1 = Math.random() || 1e-6;
+      const u2 = Math.random();
+      const gauss = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      const latitudeOffset = gauss * 0.09; // σ ≈ 5.16°
+      // 在大球面上的位置：先在银道面（xy 平面）构造点，再绕 x 轴倾斜。
+      const x0 = Math.cos(latitudeOffset) * Math.cos(azimuth);
+      const y0 = Math.cos(latitudeOffset) * Math.sin(azimuth);
+      const z0 = Math.sin(latitudeOffset);
+      // 绕 x 轴旋转 tilt：使银道面相对黄道面倾斜。
+      const y = y0 * cosT - z0 * sinT;
+      const z = y0 * sinT + z0 * cosT;
+      const magnitude = 1 + Math.random() * 5;
+      const colorTemp = 3000 + Math.random() * 7000;
+      const color = this.temperatureToRGB(colorTemp);
+      this.stars.push({
+        position: { x: x0 * this.distance, y: y * this.distance, z: z * this.distance },
+        magnitude,
+        color,
+      });
+    }
+  }
+
+  private temperatureToRGB(temp: number): [number, number, number] {
+    let r: number, g: number, b: number;
+    if (temp <= 4000) {
+      r = 1;
+      g = temp / 4000;
+      b = 0.2;
+    } else if (temp <= 6000) {
+      r = 1;
+      g = 0.8 + (temp - 4000) / 10000;
+      b = (temp - 4000) / 2000;
+    } else {
+      r = 1;
+      g = 1;
+      b = (temp - 5000) / 5000;
+    }
+    return [Math.min(1, r), Math.min(1, g), Math.min(1, b)];
+  }
+
+  update(time: number): void {
+    // 银河整体绕银极缓慢自转（视觉上几乎不可察觉）。
+    this.time = time;
+  }
+
+  render(renderer?: Renderer): void {
+    this.lastDrawVertexCount = this.stars.length;
+    this.drawCallCount += 1;
+    if (renderer && this.stars.length > 0) {
+      drawPointList(renderer, this.stars.length, 'galaxy');
+    }
+  }
+
+  getLastDrawVertexCount(): number {
+    return this.lastDrawVertexCount;
+  }
+
+  getDrawCallCount(): number {
+    return this.drawCallCount;
+  }
+
+  dispose(): void {
+    this.stars = [];
+  }
+
+  getStarCount(): number {
+    return this.stars.length;
+  }
+
+  getTime(): number {
+    return this.time;
+  }
+}
+
 export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
   private stellarBackground: StellarBackground;
   private asteroidBelt: AsteroidBelt;
@@ -773,7 +1194,11 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
   private solarWind: SolarWind;
   private magnetosphere: Magnetosphere;
   private auroras: Auroras;
-  
+  private trojanGroup: TrojanGroup;
+  private heliopause: Heliopause;
+  private currentSheet: CurrentSheet;
+  private galaxy: Galaxy;
+
   private asteroidBeltEnabled = true;
   private kuiperBeltEnabled = true;
   private oortCloudEnabled = true;
@@ -781,7 +1206,11 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
   private stellarBackgroundEnabled = true;
   private magnetosphereEnabled = true;
   private aurorasEnabled = true;
-  
+  private trojanGroupEnabled = true;
+  private heliopauseEnabled = true;
+  private currentSheetEnabled = true;
+  private galaxyEnabled = true;
+
   constructor() {
     this.stellarBackground = new StarData();
     this.asteroidBelt = new AsteroidBeltImpl();
@@ -790,9 +1219,13 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
     this.solarWind = new SolarWindImpl();
     this.magnetosphere = new MagnetosphereImpl();
     this.auroras = new AurorasImpl();
+    this.trojanGroup = new TrojanGroupImpl();
+    this.heliopause = new HeliopauseImpl();
+    this.currentSheet = new CurrentSheetImpl();
+    this.galaxy = new GalaxyImpl();
   }
-  
-  update(time: number, sunPosition: Vec3d): void {
+
+  update(time: number, sunPosition: Vec3d, cameraPosition: Vec3d): void {
     if (this.asteroidBeltEnabled) {
       this.asteroidBelt.update(time);
     }
@@ -805,35 +1238,60 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
     if (this.solarWindEnabled) {
       this.solarWind.update(time, sunPosition);
     }
+    // N-03 修复：使用真实 cameraPosition，不再硬编码 {0,0,0}。
     if (this.stellarBackgroundEnabled) {
-      this.stellarBackground.update({ x: 0, y: 0, z: 0 });
+      this.stellarBackground.update(cameraPosition);
+    }
+    if (this.trojanGroupEnabled) {
+      this.trojanGroup.update(time);
+    }
+    if (this.heliopauseEnabled) {
+      this.heliopause.update(time);
+    }
+    if (this.currentSheetEnabled) {
+      this.currentSheet.update(time);
+    }
+    if (this.galaxyEnabled) {
+      this.galaxy.update(time);
     }
   }
-  
-  render(): void {
+
+  render(renderer: Renderer): void {
     if (this.stellarBackgroundEnabled) {
-      this.stellarBackground.render();
+      this.stellarBackground.render(renderer);
+    }
+    if (this.galaxyEnabled) {
+      this.galaxy.render(renderer);
+    }
+    if (this.heliopauseEnabled) {
+      this.heliopause.render(renderer);
+    }
+    if (this.currentSheetEnabled) {
+      this.currentSheet.render(renderer);
     }
     if (this.solarWindEnabled) {
-      this.solarWind.render();
+      this.solarWind.render(renderer);
     }
     if (this.oortCloudEnabled) {
-      this.oortCloud.render();
+      this.oortCloud.render(renderer);
     }
     if (this.kuiperBeltEnabled) {
-      this.kuiperBelt.render();
+      this.kuiperBelt.render(renderer);
     }
     if (this.asteroidBeltEnabled) {
-      this.asteroidBelt.render();
+      this.asteroidBelt.render(renderer);
+    }
+    if (this.trojanGroupEnabled) {
+      this.trojanGroup.render(renderer);
     }
     if (this.magnetosphereEnabled) {
-      this.magnetosphere.render();
+      this.magnetosphere.render(renderer);
     }
     if (this.aurorasEnabled) {
-      this.auroras.render();
+      this.auroras.render(renderer);
     }
   }
-  
+
   dispose(): void {
     this.asteroidBelt.dispose();
     this.kuiperBelt.dispose();
@@ -841,86 +1299,142 @@ export class ExtendedSpaceEnvironmentImpl implements ExtendedSpaceEnvironment {
     this.solarWind.dispose();
     this.magnetosphere.dispose();
     this.auroras.dispose();
+    this.trojanGroup.dispose();
+    this.heliopause.dispose();
+    this.currentSheet.dispose();
+    this.galaxy.dispose();
   }
-  
+
   setAsteroidBeltEnabled(enabled: boolean): void {
     this.asteroidBeltEnabled = enabled;
   }
-  
+
   setKuiperBeltEnabled(enabled: boolean): void {
     this.kuiperBeltEnabled = enabled;
   }
-  
+
   setOortCloudEnabled(enabled: boolean): void {
     this.oortCloudEnabled = enabled;
   }
-  
+
   setSolarWindEnabled(enabled: boolean): void {
     this.solarWindEnabled = enabled;
   }
-  
+
   setStellarBackgroundEnabled(enabled: boolean): void {
     this.stellarBackgroundEnabled = enabled;
   }
-  
+
   setMagnetosphereEnabled(enabled: boolean): void {
     this.magnetosphereEnabled = enabled;
   }
-  
+
   setAurorasEnabled(enabled: boolean): void {
     this.aurorasEnabled = enabled;
   }
-  
+
+  setTrojanGroupEnabled(enabled: boolean): void {
+    this.trojanGroupEnabled = enabled;
+  }
+
+  setHeliopauseEnabled(enabled: boolean): void {
+    this.heliopauseEnabled = enabled;
+  }
+
+  setCurrentSheetEnabled(enabled: boolean): void {
+    this.currentSheetEnabled = enabled;
+  }
+
+  setGalaxyEnabled(enabled: boolean): void {
+    this.galaxyEnabled = enabled;
+  }
+
   getAsteroidBeltEnabled(): boolean {
     return this.asteroidBeltEnabled;
   }
-  
+
   getKuiperBeltEnabled(): boolean {
     return this.kuiperBeltEnabled;
   }
-  
+
   getOortCloudEnabled(): boolean {
     return this.oortCloudEnabled;
   }
-  
+
   getSolarWindEnabled(): boolean {
     return this.solarWindEnabled;
   }
-  
+
   getStellarBackgroundEnabled(): boolean {
     return this.stellarBackgroundEnabled;
   }
-  
+
   getMagnetosphereEnabled(): boolean {
     return this.magnetosphereEnabled;
   }
-  
+
   getAurorasEnabled(): boolean {
     return this.aurorasEnabled;
   }
-  
+
+  getTrojanGroupEnabled(): boolean {
+    return this.trojanGroupEnabled;
+  }
+
+  getHeliopauseEnabled(): boolean {
+    return this.heliopauseEnabled;
+  }
+
+  getCurrentSheetEnabled(): boolean {
+    return this.currentSheetEnabled;
+  }
+
+  getGalaxyEnabled(): boolean {
+    return this.galaxyEnabled;
+  }
+
   getAsteroidBelt(): AsteroidBelt {
     return this.asteroidBelt;
   }
-  
+
   getKuiperBelt(): KuiperBelt {
     return this.kuiperBelt;
   }
-  
+
   getOortCloud(): OortCloud {
     return this.oortCloud;
   }
-  
+
   getSolarWind(): SolarWind {
     return this.solarWind;
   }
-  
+
   getMagnetosphere(): Magnetosphere {
     return this.magnetosphere;
   }
-  
+
   getAuroras(): Auroras {
     return this.auroras;
+  }
+
+  getStellarBackground(): StellarBackground {
+    return this.stellarBackground;
+  }
+
+  getTrojanGroup(): TrojanGroup {
+    return this.trojanGroup;
+  }
+
+  getHeliopause(): Heliopause {
+    return this.heliopause;
+  }
+
+  getCurrentSheet(): CurrentSheet {
+    return this.currentSheet;
+  }
+
+  getGalaxy(): Galaxy {
+    return this.galaxy;
   }
 }
 

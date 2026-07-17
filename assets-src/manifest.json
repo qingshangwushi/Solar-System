@@ -1,0 +1,153 @@
+{
+  "schema": "solar-system-assets-manifest/v1",
+  "version": "0.1.0",
+  "generated": "procedural",
+  "root": "/Users/chenchao/Documents/projects/github/Solar-System",
+  "layer_definition": {
+    "S": "核心可见天体（太阳/地球/月球）—— 必须有纹理+高程",
+    "A": "主要行星（火星/木星等）—— 至少有纹理",
+    "B": "次要卫星（土卫六等）—— 占位即可",
+    "C": "远景与特效（星空/噪声/corona）—— 不绑定具体天体"
+  },
+  "total_assets": 11,
+  "total_size_bytes": 609822,
+  "by_layer": {
+    "S": 5,
+    "A": 3,
+    "C": 3
+  },
+  "assets": [
+    {
+      "id": "sun_texture",
+      "name": "Sun surface texture (procedural placeholder)",
+      "type": "texture",
+      "path": "assets-src/bodies/sun.png",
+      "layer": "S",
+      "size_bytes": 94059,
+      "sha256": "d9b2fae182ac529fa04ffbad8df5785f1d2b4b79ac1f7c7eb3d4c5c741719ad8",
+      "source_url": "https://soho.nascom.nasa.gov/data/REPROCESSING/",
+      "license": "NASA Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "earth_texture",
+      "name": "Earth Blue Marble texture (procedural placeholder)",
+      "type": "texture",
+      "path": "assets-src/bodies/earth.png",
+      "layer": "S",
+      "size_bytes": 95468,
+      "sha256": "6827ef983c83ce44c230c1546ad60e5b9c5647729ee390d6967a2a93d4e67eb7",
+      "source_url": "https://visibleearth.nasa.gov/images/73593/eastern-hemisphere",
+      "license": "NASA Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "moon_texture",
+      "name": "Moon LRO WAC texture (procedural placeholder)",
+      "type": "texture",
+      "path": "assets-src/bodies/moon.png",
+      "layer": "S",
+      "size_bytes": 79106,
+      "sha256": "0e65e532b296c12f2d73fa3ca3bb35e8edcd5ae34e84950d82c9a1ab854b16df",
+      "source_url": "https://astrogeology.usgs.gov/search/map/Moon/LRO/LRO_LWAC_global_100m_june2015",
+      "license": "NASA / USGS Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "mars_texture",
+      "name": "Mars MDIM texture (procedural placeholder)",
+      "type": "texture",
+      "path": "assets-src/bodies/mars.png",
+      "layer": "A",
+      "size_bytes": 80586,
+      "sha256": "95a2b0191dee399be92ff46458d6f60d11dc5bb98b9e8a16b2272014020eaa08",
+      "source_url": "https://astrogeology.usgs.gov/search/map/Mars/Global/Mars_MGS_MOLA_DEM_mosaic_global_463m",
+      "license": "NASA / USGS Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "jupiter_texture",
+      "name": "Jupiter atmosphere texture (procedural placeholder)",
+      "type": "texture",
+      "path": "assets-src/bodies/jupiter.png",
+      "layer": "A",
+      "size_bytes": 51735,
+      "sha256": "60cfc6d60cf4a2b607a8dcb82db40bdd55ef33c5d5e064cc3328f264d8e2bccd",
+      "source_url": "https://photojournal.jpl.nasa.gov/catalog/PIA07782",
+      "license": "NASA JPL Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "earth_elevation",
+      "name": "Earth SRTM elevation (procedural placeholder 64x32)",
+      "type": "elevation",
+      "path": "assets-src/terrain/earth_elevation.bin",
+      "layer": "S",
+      "size_bytes": 8192,
+      "sha256": "1b2c7e67d25b698ab8701e0bbe79023e0da59cff4bd35d71e7f0062306868303",
+      "source_url": "https://e4ftl01.cr.usgs.gov/MEASURES/SRTMGL1.003/",
+      "license": "NASA Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "moon_elevation",
+      "name": "Moon LOLA elevation (procedural placeholder 64x32)",
+      "type": "elevation",
+      "path": "assets-src/terrain/moon_elevation.bin",
+      "layer": "S",
+      "size_bytes": 8192,
+      "sha256": "f20c0c82200cf86f06581a1ed707cd74b26381732152868efebf80e6132f6156",
+      "source_url": "https://pds-geosciences.wustl.edu/missions/lro/lola.htm",
+      "license": "NASA PDS Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "mars_elevation",
+      "name": "Mars MOLA elevation (procedural placeholder 64x32)",
+      "type": "elevation",
+      "path": "assets-src/terrain/mars_elevation.bin",
+      "layer": "A",
+      "size_bytes": 8192,
+      "sha256": "182501bfea061c6ec10cd8e0742e2f09b5129bda2e065860decec82e36f1e27a",
+      "source_url": "https://astrogeology.usgs.gov/search/map/Mars/Global/Mars_MGS_MOLA_DEM_mosaic_global_463m",
+      "license": "NASA / USGS Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "noise_256",
+      "name": "Perlin-like noise tile 256x256 (effects)",
+      "type": "effect",
+      "path": "assets-src/effects/noise_256.png",
+      "layer": "C",
+      "size_bytes": 40295,
+      "sha256": "c4486de5e23f2335e7b14c174c94462347e7d8a89f057f41dfbbd05cd72e5f9f",
+      "source_url": "https://www.opengl.org/archives/resources/code/samples/sig99/advanced99/notes/node108.html",
+      "license": "Procedural / CC0",
+      "procedural": true
+    },
+    {
+      "id": "corona_512",
+      "name": "Sun corona radial gradient 512x512 (effects)",
+      "type": "effect",
+      "path": "assets-src/effects/corona_512.png",
+      "layer": "C",
+      "size_bytes": 129503,
+      "sha256": "4ec0a31b1bc1bcb9a382599e33eb29dd1494a40e6bf1e7952b3bb9e5d02df80c",
+      "source_url": "https://svs.gsfc.nasa.gov/13471",
+      "license": "NASA Public Domain",
+      "procedural": true
+    },
+    {
+      "id": "star_field_1024",
+      "name": "Star field 1024x512 (effects)",
+      "type": "effect",
+      "path": "assets-src/effects/star_field_1024.png",
+      "layer": "C",
+      "size_bytes": 14494,
+      "sha256": "efc0581d2ec3927caaa2a7baf8483d4946bf9f32b74690091aa9cc4cacb51683",
+      "source_url": "https://svs.gsfc.nasa.gov/4846",
+      "license": "NASA Public Domain",
+      "procedural": true
+    }
+  ]
+}

@@ -193,16 +193,16 @@ export function nowAsJulianDate(): JulianDate {
 }
 
 export function dateToMjd(date: Date): number {
-  const jsDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  const jd = (jsDate.getTime() / 86400000) + 2440587.5;
+  // Date.getTime() 已经是 UTC 毫秒数；直接换算到 JD/MJD 即可，
+  // 不要再叠加 getTimezoneOffset()（会导致本地时区被当作 UTC 二次解释）。
+  const jd = (date.getTime() / 86400000) + 2440587.5;
   return jd - JD_MJD_OFFSET;
 }
 
 export function mjdToDate(mjd: number): Date {
   const jd = mjd + JD_MJD_OFFSET;
   const timestamp = (jd - 2440587.5) * 86400000;
-  const date = new Date(timestamp);
-  return new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+  return new Date(timestamp);
 }
 
 export function formatMjd(mjd: number): string {

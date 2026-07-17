@@ -278,15 +278,15 @@ export { BaseSceneNode, PerspectiveCamera, OrthographicCamera, OrbitController, 
 export type { CameraType, NavigationMode } from './camera.js';
 export { BaseCelestialBody, Sun, Earth, Moon, SunMaterialImpl, EarthMaterialImpl, MoonMaterialImpl, AtmosphereMaterialImpl, SphereGeometry } from './celestial-bodies.js';
 export type { CelestialBodyType } from './celestial-bodies.js';
-export { TileCoordImpl, TileBoundsImpl, TerrainTileImpl, QuadTreeNodeImpl, TerrainLODControllerImpl, AtmosphereRendererImpl, AtmosphereParamsImpl } from './terrain.js';
-export type { TileId, TileLevel, TileCoord, TileBounds, Tile, TerrainTile, QuadTreeNode, TerrainLODController, AtmosphereRenderer, AtmosphereParams } from './terrain.js';
+export { TileCoordImpl, TileBoundsImpl, TerrainTileImpl, QuadTreeNodeImpl, TerrainLODControllerImpl, AtmosphereRendererImpl, AtmosphereParamsImpl, SurfaceCameraImpl, IrregularBodyRendererImpl, calculateScreenSpaceError } from './terrain.js';
+export type { TileId, TileLevel, TileCoord, TileBounds, Tile, TerrainTile, QuadTreeNode, TerrainLODController, AtmosphereRenderer, AtmosphereParams, ElevationData, TerrainLODConfig } from './terrain.js';
 export { LogarithmicScaleMapping, PiecewiseScaleMapping, ScaleManager, convertUnit, toMeters, fromMeters, formatDistance, formatTime, ASTRONOMICAL_UNIT, LIGHT_YEAR, PARSEC } from './scale-mapping.js';
 export type { DistanceUnit, ScaleConfig, ScaleMapping } from './scale-mapping.js';
-export { StarData, AsteroidBeltImpl, KuiperBeltImpl, OortCloudImpl, SolarWindImpl, MagnetosphereImpl, AurorasImpl, ExtendedSpaceEnvironmentImpl, createExtendedSpaceEnvironment, drawPointList, ASTEROID_BELT_RADIUS_RANGE, ASTEROID_BELT_THICKNESS, KUIPER_BELT_RADIUS_RANGE, KUIPER_BELT_THICKNESS, OORT_CLOUD_INNER_RADIUS, OORT_CLOUD_OUTER_RADIUS, SOLAR_WIND_SPEED } from './extended-space.js';
-export type { Star, Asteroid, Comet, Particle, ExtendedSpaceEnvironment, StellarBackground, AsteroidBelt, KuiperBelt, OortCloud, SolarWind, Magnetosphere, Auroras } from './extended-space.js';
+export { StarData, AsteroidBeltImpl, KuiperBeltImpl, OortCloudImpl, SolarWindImpl, MagnetosphereImpl, AurorasImpl, TrojanGroupImpl, HeliopauseImpl, CurrentSheetImpl, GalaxyImpl, ExtendedSpaceEnvironmentImpl, createExtendedSpaceEnvironment, drawPointList, ASTEROID_BELT_RADIUS_RANGE, ASTEROID_BELT_THICKNESS, KUIPER_BELT_RADIUS_RANGE, KUIPER_BELT_THICKNESS, OORT_CLOUD_INNER_RADIUS, OORT_CLOUD_OUTER_RADIUS, SOLAR_WIND_SPEED, TROJAN_GROUP_DEFAULT_BODY_ID, TROJAN_GROUP_DEFAULT_ORBIT_RADIUS, TROJAN_GROUP_DEFAULT_COUNT_PER_SWARM, HELIOPAUSE_DEFAULT_RADIUS, HELIOPAUSE_DEFAULT_POINT_COUNT, CURRENT_SHEET_DEFAULT_RADIUS, CURRENT_SHEET_DEFAULT_WAVINESS, CURRENT_SHEET_DEFAULT_RADIAL_SEGMENTS, CURRENT_SHEET_DEFAULT_AZIMUTH_SEGMENTS, GALAXY_DEFAULT_STAR_COUNT, GALAXY_DEFAULT_DISTANCE, GALAXY_DEFAULT_TILT } from './extended-space.js';
+export type { Star, Asteroid, Comet, Particle, ExtendedSpaceEnvironment, StellarBackground, AsteroidBelt, KuiperBelt, OortCloud, SolarWind, Magnetosphere, Auroras, TrojanGroup, Heliopause, CurrentSheet, Galaxy } from './extended-space.js';
 export { EventsServiceImpl, CruiseServiceImpl, PureViewingModeImpl, createEventsService, createCruiseService, createPureViewingMode, EventTimelinePlayer, jumpToEventMax, EVENT_TYPES, CRUISES } from './events-cruises.js';
 export type { EventType, CelestialEvent, EventResult, CruiseWaypoint, Cruise, EventSearchOptions, EventsService, CruiseService, PureViewingMode, CruiseCallbacks, PureViewingCallbacks, TimeSetting, CameraTarget, CameraDirection, LayerVisibility, ResourcePreload, TextCard, ExitState, ScaleMode, EventCameraRecommendation, JumpToEventResult } from './events-cruises.js';
-export { ResourceValidatorImpl, UpdateManagerImpl, TestRunnerImpl, OpsManagerImpl, createResourceValidator, createUpdateManager, createTestRunner, createOpsManager } from './productization.js';
+export { ResourceValidatorImpl, UpdateManagerImpl, TestRunnerImpl, OpsManagerImpl, DefaultTestExecutor, createResourceValidator, createUpdateManager, createTestRunner, createOpsManager } from './productization.js';
 export { RenderLoop } from './render-loop.js';
 export type {
   RenderLoopBodyId,
@@ -296,7 +296,7 @@ export type {
   RequestAnimationFrameLike,
   CancelAnimationFrameLike,
 } from './render-loop.js';
-export type { ResourceType, ValidationStatus, ResourceValidationResult, ValidationReport, ResourceValidator, UpdateInfo, UpdateStatus, UpdateManager, TestResult, TestSuiteResult, TestReport, TestEnvironment, TestRunner, MaintenanceTask, OperationalStats, HealthCheckResult, OpsManager } from './productization.js';
+export type { ResourceType, ValidationStatus, ResourceValidationResult, ValidationReport, ResourceValidator, UpdateInfo, UpdateStatus, UpdateManager, UpdateManagerConfig, RemoteManifest, TestResult, TestSuiteResult, TestReport, TestEnvironment, TestRunner, TestExecutor, TestExecutorResult, TestRunResult, MaintenanceTask, OperationalStats, HealthCheckResult, OpsManager } from './productization.js';
 export {
   applyToneMapping,
   applyColorGrading,
@@ -365,3 +365,20 @@ export {
   findRoot,
 } from './shadows.js';
 export type { ShadowCone, EclipseInfo, ShadowParams, ContactPoint, ContactEventType } from './shadows.js';
+
+// E-06 / E-07 新增导出（GPU post-processing pipeline + shadow map pass）
+export { DEFAULT_GPU_POST_PROCESSING } from './hdr.js';
+export type { PostProcessingOptions, GPUPostProcessingPipeline } from './hdr.js';
+export {
+  computeContactTimesFromSeparation,
+  ArrayShadowMap,
+  DEFAULT_SHADOW_MAP_OPTIONS,
+} from './shadows.js';
+export type {
+  ShadowMap,
+  ShadowMapSampler,
+  ContactTime,
+  BoundingBox,
+  ShadowMapOptions,
+  ShadowMapPass,
+} from './shadows.js';

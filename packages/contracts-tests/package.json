@@ -1,0 +1,27 @@
+{
+  "name": "@solar-system/contracts-tests",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solar-system/renderer-core": "workspace:*",
+    "@solar-system/renderer-webgpu": "workspace:*",
+    "@solar-system/renderer-webgl2": "workspace:*",
+    "@solar-system/body-renderers": "workspace:*",
+    "@solar-system/navigation-service": "workspace:*",
+    "@solar-system/tour-player": "workspace:*",
+    "@solar-system/app-orchestrator": "workspace:*",
+    "@solar-system/astro-core-api": "workspace:*",
+    "@solar-system/diagnostics": "workspace:*",
+    "@solar-system/resource-runtime": "workspace:*",
+    "@solar-system/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "typescript": "^5.6.3"
+  }
+}

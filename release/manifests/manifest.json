@@ -1,23 +1,209 @@
 {
-  "schema": "solar-system-manifest/v1",
+  "schema": "solar-system-release-manifest/v2",
   "version": "0.1.0",
-  "generated": "smoke",
-  "root": "/workspace",
-  "scan_dirs": [
-    "data-src/normalized",
-    "assets-src"
-  ],
-  "total_files": 1,
-  "total_size": 107360,
-  "by_top_level": {
-    "data-src": 1
+  "buildDate": "2026-07-17T18:48:54Z",
+  "fileCount": 32,
+  "totalSizeBytes": 1276047,
+  "byCategory": {
+    "checksums": 2,
+    "data": 14,
+    "licenses": 2,
+    "server": 4,
+    "wasm": 6,
+    "web": 4
   },
-  "entries": [
+  "files": [
     {
-      "path": "data-src/normalized/catalog.json",
+      "path": "checksums/checksums.sha256",
+      "size": 2622,
+      "sha256": "497cd0d5815123a22f3f4e074b6880183de9e6751345d4789bbc0ccaa7516d27",
+      "category": "checksums"
+    },
+    {
+      "path": "checksums/checksums.sha256.asc",
+      "size": 406,
+      "sha256": "d8874f9eac47197300828147a9dbad2e28c9c29a653879eacce3bea3911d72d6",
+      "category": "checksums"
+    },
+    {
+      "path": "data/benchmark.json",
+      "size": 7065,
+      "sha256": "b4d507cd90c03dc86f48adf3976f3998337f45a4e6954532f9b5aeb1c3ac2ec0",
+      "category": "data"
+    },
+    {
+      "path": "data/catalog.json",
       "size": 107360,
       "sha256": "4b7a5ea73a84576d3086a6a100df1c6f271963bcd5a00b060361a4380e5bcf97",
-      "dependencies": []
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-0.bin",
+      "size": 294,
+      "sha256": "ca5500c4e64426c97ab8df80523cf7f7ffbf71ec0c53a0f74f5b5a2b15db0367",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-1.bin",
+      "size": 870,
+      "sha256": "7d8a88b16b72ebbe6475d0a6df21d9428f6b7d2e030d7fdeedb0cb1a6c685397",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-2.bin",
+      "size": 870,
+      "sha256": "f7fa1135e1b38d5824ca415f5010df3c08d3136f944a2ed640951ba4ab5308b9",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-3.bin",
+      "size": 870,
+      "sha256": "d24cab81edd5ba60b19c565cb009845d776839f1e2ab7cb086695d8d30ea71c8",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-301.bin",
+      "size": 870,
+      "sha256": "5ea2063ce74140ccceed61ed4ade9c454c6f2334fd75d74277a754a43f3afe2c",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-4.bin",
+      "size": 870,
+      "sha256": "84d0aba2b34567a7a5d24d80fdafa37e8ee5410f17b1fca70c31d19eebbdda6f",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-5.bin",
+      "size": 870,
+      "sha256": "ea82157c3972070fb40dc30d28991972f34f5654d4ac6fb16226d965853d6f35",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-6.bin",
+      "size": 870,
+      "sha256": "a09a7d292d57edca7c3ad4a7eef3eae2832e49df8b2bba92a2e95016e2e7e866",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-7.bin",
+      "size": 870,
+      "sha256": "a6a91db5391f6dd6bb3e31591883c65b508de2642672d9780f037334a7071339",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-8.bin",
+      "size": 870,
+      "sha256": "3d10c3bdc11e91d114fc12f1312bc72bbad9b6a2445d8925a43cffa0998dd5a6",
+      "category": "data"
+    },
+    {
+      "path": "data/ephemeris-report.json",
+      "size": 2627,
+      "sha256": "50a27ba6d53bdc96afd09939a2368f00b67b73c2e75e3a9485d3b8c1bc71b8a0",
+      "category": "data"
+    },
+    {
+      "path": "data/search-index.json",
+      "size": 50746,
+      "sha256": "ce5b718659f70674d7277fe5b698cf163df0375b7101617785db7c05db19f4ec",
+      "category": "data"
+    },
+    {
+      "path": "licenses/LICENSE",
+      "size": 1069,
+      "sha256": "63e5fd1629ec14a8e06edd2e5046a5dad8e302cd002fb3f495b8ceeade2ab201",
+      "category": "licenses"
+    },
+    {
+      "path": "licenses/THIRD_PARTY.md",
+      "size": 1303,
+      "sha256": "074d823211b586633a2921a9d26e84671ca096cd9a3585cad1b37798771d8f20",
+      "category": "licenses"
+    },
+    {
+      "path": "server/diagnose.sh",
+      "size": 2461,
+      "sha256": "a2c5cf89e8b61ed4936d8bd5bec05a2c105cb1b4f5264e19d05f625c0e6322c1",
+      "category": "server"
+    },
+    {
+      "path": "server/start.sh",
+      "size": 1615,
+      "sha256": "95e93947bfc96b68b7f3fc59be676a80a54e41ff63a8cb702b1683003aa41a49",
+      "category": "server"
+    },
+    {
+      "path": "server/stop.sh",
+      "size": 1101,
+      "sha256": "b1e3f1910a12e79f9dd33adad1a230fe308a057329bc7c67decb7b9d03a506a4",
+      "category": "server"
+    },
+    {
+      "path": "server/verify.sh",
+      "size": 1944,
+      "sha256": "405f931fa1e7e15767af068e403f3f3423cacd1f93542fb208756418b8d85b18",
+      "category": "server"
+    },
+    {
+      "path": "wasm/.gitignore",
+      "size": 1,
+      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+      "category": "wasm"
+    },
+    {
+      "path": "wasm/astro_core.d.ts",
+      "size": 3589,
+      "sha256": "eb155ade68796984a26484fb90b8ab31b377c74dd41a1e851fb0d6609ec6d220",
+      "category": "wasm"
+    },
+    {
+      "path": "wasm/astro_core.js",
+      "size": 13832,
+      "sha256": "4f72efa18290669225945e0048c65a525a900c809dfc3d66c64d75870dd64dd3",
+      "category": "wasm"
+    },
+    {
+      "path": "wasm/astro_core_bg.wasm",
+      "size": 189586,
+      "sha256": "4742b8bfa3eb24c03ba8869edaff4b73fb4ec38c90030cc2bbffe7c38eb4dad0",
+      "category": "wasm"
+    },
+    {
+      "path": "wasm/astro_core_bg.wasm.d.ts",
+      "size": 1200,
+      "sha256": "d49a7522153ddd2370f84cb3ac09a1a16a76cc0e5f89bf9ebeda26bfc326e8c1",
+      "category": "wasm"
+    },
+    {
+      "path": "wasm/package.json",
+      "size": 389,
+      "sha256": "1a5a6e9d96e1d9a0935ec26bb92982ba0fa262095104c2baeafbd8a78e7c27c6",
+      "category": "wasm"
+    },
+    {
+      "path": "web/assets/index-2YvpdZl9.js",
+      "size": 226353,
+      "sha256": "ed38c6b9efba8894973368c4abacd1c2a56b97484c1c5f686ffc88af1047fd81",
+      "category": "web"
+    },
+    {
+      "path": "web/assets/index-2YvpdZl9.js.map",
+      "size": 640804,
+      "sha256": "19c9f9140f4c58dc669ddefd0c34448b4e926c15b7c5750569734349e5212936",
+      "category": "web"
+    },
+    {
+      "path": "web/assets/index-DzqW8I1j.css",
+      "size": 11405,
+      "sha256": "39a0e42fc63d16e7f0722036b8898495c867b13341f6fd157a1856aea1205dd5",
+      "category": "web"
+    },
+    {
+      "path": "web/index.html",
+      "size": 445,
+      "sha256": "50582ff52723256232eef0201bf3aa184a55ba1070dbe8de86c4b2eabaf8415c",
+      "category": "web"
     }
   ]
 }

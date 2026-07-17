@@ -10,8 +10,15 @@ import {
   sampleShadowPCF,
   findRoot,
   ArrayShadowMap,
+  DEFAULT_SHADOW_MAP_OPTIONS,
 } from '../shadows.js';
-import type { ShadowMapSampler } from '../shadows.js';
+import type {
+  ShadowMapSampler,
+  BoundingBox,
+  ShadowMapOptions,
+  ShadowMapPass,
+} from '../shadows.js';
+import type { Renderer, TextureHandle, TextureDescriptor, PipelineDescriptor, RenderPassDescriptor, DrawCall, BufferDescriptor, BufferHandle, PipelineHandle, RendererCapabilities } from '../index.js';
 
 describe('Shadow and Eclipse Geometry', () => {
   describe('Shadow Cone', () => {
@@ -430,5 +437,347 @@ describe('computeContactTimes', () => {
     const contacts = computeContactTimes(sep, 0, 2 * Math.PI, 1.5, 0.5);
     const greatest = contacts.find((c) => c.type === 'Greatest');
     expect(greatest?.time).toBeCloseTo(Math.PI, 1);
+  });
+});
+
+// ============================================================================
+// ShadowMapPass / ShadowMapOptions / BoundingBox 接口契约（任务 10 / E-07）
+// ============================================================================
+
+/** 创建 mock renderer（记录所有调用，不执行真实 GPU 操作）。 */
+function createMockRenderer(): Renderer & {
+  calls: string[];
+  textures: TextureHandle[];
+  pipelines: PipelineHandle[];
+} {
+  const calls: string[] = [];
+  const textures: TextureHandle[] = [];
+  const pipelines: PipelineHandle[] = [];
+  let texSeq = 0;
+  let pipeSeq = 0;
+  const caps: RendererCapabilities = {
+    maxTextureSize: 8192,
+    maxTextureArrayLayers: 256,
+    maxBindGroups: 8,
+    maxUniformBufferBindingSize: 65536,
+    maxStorageBufferBindingSize: 16777216,
+    supportsFloatTextures: true,
+    supportsFloat16Textures: true,
+    supportsCompressedTextures: false,
+  };
+  const renderer: Renderer = {
+    backend: 'webgpu',
+    capabilities: caps,
+    init: async () => {},
+    destroy: () => {},
+    resize: () => {},
+    createBuffer: (_desc: BufferDescriptor): BufferHandle => ({ id: `buf-${texSeq++}`, usage: _desc.usage }),
+    updateBuffer: () => {},
+    destroyBuffer: () => {},
+    createTexture: (desc: TextureDescriptor): TextureHandle => {
+      const h: TextureHandle = { id: `tex-${texSeq++}`, format: desc.format };
+      textures.push(h);
+      calls.push(`createTexture:${desc.format}:${desc.width}x${desc.height}`);
+      return h;
+    },
+    uploadTextureData: () => {},
+    destroyTexture: (h: TextureHandle) => {
+      calls.push(`destroyTexture:${h.id}`);
+    },
+    createPipeline: (_desc: PipelineDescriptor): PipelineHandle => {
+      const h: PipelineHandle = { id: `pipe-${pipeSeq++}` };
+      pipelines.push(h);
+      calls.push('createPipeline');
+      return h;
+    },
+    destroyPipeline: () => {
+      calls.push('destroyPipeline');
+    },
+    beginPass: (desc: RenderPassDescriptor): void => {
+      const depth = desc.depthStencilAttachment ? 'depth' : 'nodepth';
+      calls.push(`beginPass:${desc.colorAttachments.length}color:${depth}`);
+    },
+    draw: (call: DrawCall): void => {
+      calls.push(`draw:${call.pipeline.id}:${call.vertexCount}`);
+    },
+    endPass: (): void => {
+      calls.push('endPass');
+    },
+    submit: (): void => {
+      calls.push('submit');
+    },
+    readPixels: async (): Promise<Uint8Array> => new Uint8Array(0),
+  };
+  return Object.assign(renderer, { calls, textures, pipelines });
+}
+
+describe('DEFAULT_SHADOW_MAP_OPTIONS', () => {
+  it('默认 resolution 应为 2048', () => {
+    expect(DEFAULT_SHADOW_MAP_OPTIONS.resolution).toBe(2048);
+  });
+  it('默认 pcfKernelSize 应为 3', () => {
+    expect(DEFAULT_SHADOW_MAP_OPTIONS.pcfKernelSize).toBe(3);
+  });
+  it('默认 bias 应为 0.001', () => {
+    expect(DEFAULT_SHADOW_MAP_OPTIONS.bias).toBeCloseTo(0.001, 6);
+  });
+  it('默认 normalBias 应为 0.02', () => {
+    expect(DEFAULT_SHADOW_MAP_OPTIONS.normalBias).toBeCloseTo(0.02, 6);
+  });
+});
+
+describe('BoundingBox 类型', () => {
+  it('应能构造合法的 BoundingBox', () => {
+    const box: BoundingBox = {
+      min: { x: -1, y: -2, z: -3 },
+      max: { x: 1, y: 2, z: 3 },
+    };
+    expect(box.min.x).toBe(-1);
+    expect(box.max.x).toBe(1);
+    expect(box.min.y).toBe(-2);
+    expect(box.max.y).toBe(2);
+  });
+});
+
+describe('ShadowMapOptions 类型', () => {
+  it('应能构造自定义的 ShadowMapOptions', () => {
+    const opts: ShadowMapOptions = {
+      resolution: 4096,
+      pcfKernelSize: 5,
+      bias: 0.002,
+      normalBias: 0.05,
+    };
+    expect(opts.resolution).toBe(4096);
+    expect(opts.pcfKernelSize).toBe(5);
+    expect(opts.bias).toBeCloseTo(0.002, 6);
+    expect(opts.normalBias).toBeCloseTo(0.05, 6);
+  });
+});
+
+/** Mock ShadowMapPass 实现，用于契约测试。 */
+class MockShadowMapPass implements ShadowMapPass {
+  prepared = false;
+  executed = false;
+  disposed = false;
+  lastLightDirection: { x: number; y: number; z: number } | null = null;
+  lastBounds: BoundingBox | null = null;
+  lastOptions: ShadowMapOptions | null = null;
+  private depthTexture: TextureHandle = { id: 'mock-depth', format: 'depth32float' };
+
+  prepare(
+    lightDirection: { x: number; y: number; z: number },
+    shadowCastBounds: BoundingBox,
+    options: ShadowMapOptions,
+  ): void {
+    if (this.disposed) throw new Error('disposed');
+    this.prepared = true;
+    this.lastLightDirection = { ...lightDirection };
+    this.lastBounds = {
+      min: { ...shadowCastBounds.min },
+      max: { ...shadowCastBounds.max },
+    };
+    this.lastOptions = { ...options };
+  }
+
+  execute(_renderer: Renderer, sceneDrawFn: () => void): void {
+    if (this.disposed) throw new Error('disposed');
+    if (!this.prepared) throw new Error('not prepared');
+    this.executed = true;
+    sceneDrawFn();
+  }
+
+  getShadowMapTexture(): TextureHandle {
+    if (!this.prepared) throw new Error('not prepared');
+    return this.depthTexture;
+  }
+
+  dispose(): void {
+    this.disposed = true;
+  }
+}
+
+describe('ShadowMapPass 接口契约', () => {
+  it('MockShadowMapPass 实现 ShadowMapPass 接口', () => {
+    const pass: ShadowMapPass = new MockShadowMapPass();
+    expect(typeof pass.prepare).toBe('function');
+    expect(typeof pass.execute).toBe('function');
+    expect(typeof pass.getShadowMapTexture).toBe('function');
+    expect(typeof pass.dispose).toBe('function');
+  });
+
+  it('prepare 保存 lightDirection / bounds / options', () => {
+    const pass = new MockShadowMapPass();
+    const dir = { x: 1, y: -1, z: 0 };
+    const bounds: BoundingBox = {
+      min: { x: -10, y: -10, z: -10 },
+      max: { x: 10, y: 10, z: 10 },
+    };
+    const opts: ShadowMapOptions = {
+      resolution: 1024,
+      pcfKernelSize: 3,
+      bias: 0.001,
+      normalBias: 0.02,
+    };
+    pass.prepare(dir, bounds, opts);
+    expect(pass.prepared).toBe(true);
+    expect(pass.lastLightDirection?.x).toBe(1);
+    expect(pass.lastBounds?.min.x).toBe(-10);
+    expect(pass.lastOptions?.resolution).toBe(1024);
+  });
+
+  it('prepare 深拷贝 bounds 与 options（修改原对象不影响已保存值）', () => {
+    const pass = new MockShadowMapPass();
+    const bounds: BoundingBox = {
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 100, y: 100, z: 100 },
+    };
+    const opts: ShadowMapOptions = { ...DEFAULT_SHADOW_MAP_OPTIONS };
+    pass.prepare({ x: 0, y: -1, z: 0 }, bounds, opts);
+    bounds.min.x = -999;
+    opts.resolution = 8192;
+    expect(pass.lastBounds?.min.x).toBe(0);
+    expect(pass.lastOptions?.resolution).toBe(2048);
+  });
+
+  it('getShadowMapTexture 在 prepare 前调用应抛错', () => {
+    const pass = new MockShadowMapPass();
+    expect(() => pass.getShadowMapTexture()).toThrow();
+  });
+
+  it('execute 在 prepare 前调用应抛错', () => {
+    const pass = new MockShadowMapPass();
+    const renderer = createMockRenderer();
+    expect(() => pass.execute(renderer, () => {})).toThrow();
+  });
+
+  it('execute 调用 sceneDrawFn 渲染场景', () => {
+    const pass = new MockShadowMapPass();
+    const renderer = createMockRenderer();
+    let drawCount = 0;
+    pass.prepare({ x: 1, y: -1, z: 0 }, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }, DEFAULT_SHADOW_MAP_OPTIONS);
+    pass.execute(renderer, () => {
+      drawCount++;
+    });
+    expect(pass.executed).toBe(true);
+    expect(drawCount).toBe(1);
+  });
+
+  it('dispose 后调用 prepare 应抛错', () => {
+    const pass = new MockShadowMapPass();
+    pass.dispose();
+    expect(pass.disposed).toBe(true);
+    expect(() =>
+      pass.prepare(
+        { x: 0, y: -1, z: 0 },
+        { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        DEFAULT_SHADOW_MAP_OPTIONS,
+      ),
+    ).toThrow();
+  });
+
+  it('dispose 后调用 execute 应抛错', () => {
+    const pass = new MockShadowMapPass();
+    const renderer = createMockRenderer();
+    pass.prepare({ x: 0, y: -1, z: 0 }, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }, DEFAULT_SHADOW_MAP_OPTIONS);
+    pass.dispose();
+    expect(() => pass.execute(renderer, () => {})).toThrow();
+  });
+
+  it('getShadowMapTexture 返回 depth32float 格式的句柄', () => {
+    const pass = new MockShadowMapPass();
+    pass.prepare({ x: 0, y: -1, z: 0 }, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }, DEFAULT_SHADOW_MAP_OPTIONS);
+    const tex = pass.getShadowMapTexture();
+    expect(tex.format).toBe('depth32float');
+    expect(typeof tex.id).toBe('string');
+  });
+
+  it('多次 prepare 更新 lightDirection / options', () => {
+    const pass = new MockShadowMapPass();
+    const bounds: BoundingBox = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+    pass.prepare({ x: 1, y: 0, z: 0 }, bounds, { ...DEFAULT_SHADOW_MAP_OPTIONS, resolution: 1024 });
+    pass.prepare({ x: 0, y: 0, z: -1 }, bounds, { ...DEFAULT_SHADOW_MAP_OPTIONS, resolution: 2048 });
+    expect(pass.lastLightDirection?.z).toBe(-1);
+    expect(pass.lastOptions?.resolution).toBe(2048);
+  });
+});
+
+describe('computeContactTimes 七接触点完整性（E-07 回归）', () => {
+  // 经典 V 形：sep(t) = |t - 50|，最小值 0 在 t=50
+  const vShape = (t: number): number => Math.abs(t - 50);
+
+  it('应严格返回 7 个接触点', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    expect(contacts).toHaveLength(7);
+  });
+
+  it('七接触点应包含全部 7 种类型（P1/U1/U2/Greatest/U3/U4/P2）', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const types = new Set(contacts.map((c) => c.type));
+    expect(types.size).toBe(7);
+    expect(types.has('P1')).toBe(true);
+    expect(types.has('U1')).toBe(true);
+    expect(types.has('U2')).toBe(true);
+    expect(types.has('Greatest')).toBe(true);
+    expect(types.has('U3')).toBe(true);
+    expect(types.has('U4')).toBe(true);
+    expect(types.has('P2')).toBe(true);
+  });
+
+  it('接触时刻严格递增：P1 < U1 < U2 < Greatest < U3 < U4 < P2', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const byType = new Map(contacts.map((c) => [c.type, c.time]));
+    const p1 = byType.get('P1')!;
+    const u1 = byType.get('U1')!;
+    const u2 = byType.get('U2')!;
+    const g = byType.get('Greatest')!;
+    const u3 = byType.get('U3')!;
+    const u4 = byType.get('U4')!;
+    const p2 = byType.get('P2')!;
+    expect(p1).toBeLessThan(u1);
+    expect(u1).toBeLessThan(u2);
+    expect(u2).toBeLessThan(g);
+    expect(g).toBeLessThan(u3);
+    expect(u3).toBeLessThan(u4);
+    expect(u4).toBeLessThan(p2);
+  });
+
+  it('P1 / P2 应满足 sep(t) = radiusP1（外接触）', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const p1 = contacts.find((c) => c.type === 'P1')!;
+    const p2 = contacts.find((c) => c.type === 'P2')!;
+    // |t-50| = 30 → t = 20 或 t = 80
+    // findRoot 使用 bisection，默认容差略大于 1e-5；这里用 1e-3 精度足够
+    expect(vShape(p1.time)).toBeCloseTo(30, 3);
+    expect(vShape(p2.time)).toBeCloseTo(30, 3);
+    expect(p1.time).toBeCloseTo(20, 1);
+    expect(p2.time).toBeCloseTo(80, 1);
+  });
+
+  it('U1 / U4 应满足 sep(t) = radiusU1（内接触/全食始末）', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const u1 = contacts.find((c) => c.type === 'U1')!;
+    const u4 = contacts.find((c) => c.type === 'U4')!;
+    // |t-50| = 10 → t = 40 或 t = 60
+    expect(vShape(u1.time)).toBeCloseTo(10, 3);
+    expect(vShape(u4.time)).toBeCloseTo(10, 3);
+    expect(u1.time).toBeCloseTo(40, 1);
+    expect(u4.time).toBeCloseTo(60, 1);
+  });
+
+  it('Greatest 应位于全食中点（sep 最小处）', () => {
+    const contacts = computeContactTimes(vShape, 0, 100, 30, 10);
+    const greatest = contacts.find((c) => c.type === 'Greatest')!;
+    expect(greatest.time).toBeCloseTo(50, 1);
+    expect(vShape(greatest.time)).toBeCloseTo(0, 5);
+  });
+
+  it('与 computeContactTimesFromSeparation 结果一致', () => {
+    const a = computeContactTimes(vShape, 0, 100, 30, 10);
+    const b = computeContactTimesFromSeparation(vShape, 0, 100, 30, 10);
+    expect(a).toHaveLength(b.length);
+    for (let i = 0; i < a.length; i++) {
+      expect(a[i]!.type).toBe(b[i]!.type);
+      expect(a[i]!.time).toBeCloseTo(b[i]!.time, 6);
+    }
   });
 });

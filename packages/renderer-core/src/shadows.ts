@@ -5,6 +5,7 @@
  */
 
 import { Vec3d } from '@solar-system/schemas';
+import type { Renderer, TextureHandle } from './index.js';
 
 export interface ShadowCone {
   apex: Vec3d;
@@ -620,4 +621,71 @@ function normalize(v: Vec3d): Vec3d {
 
 function dot(a: Vec3d, b: Vec3d): number {
   return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+// ============================================================================
+// GPU Shadow Map Pass (E-07)
+// ============================================================================
+//
+// 以下接口定义 GPU shadow map 渲染通道契约。后端（WebGPU / WebGL2）
+// 实现此接口以执行真正的 GPU 深度纹理渲染与 PCF 采样。
+//
+// 典型流程：
+//   1. prepare(lightDirection, shadowCastBounds, options)
+//      - 计算光源视图矩阵 + 正交投影矩阵（覆盖 shadowCastBounds）
+//      - 创建/复用 resolution×resolution 深度纹理
+//   2. execute(renderer, sceneDrawFn)
+//      - 将光源视角 VP 设置到 renderer（uniform）
+//      - 调用 sceneDrawFn() 渲染场景到深度纹理（仅深度写入）
+//   3. 后续场景渲染时，从 getShadowMapTexture() 取深度纹理做 PCF 采样
+// ============================================================================
+
+/** 轴对齐包围盒，用于界定阴影投射范围。 */
+export interface BoundingBox {
+  min: Vec3d;
+  max: Vec3d;
+}
+
+/** Shadow map 渲染选项。 */
+export interface ShadowMapOptions {
+  /** 深度纹理分辨率（如 2048）。 */
+  resolution: number;
+  /** PCF 采样核大小（如 3 表示 3×3）。 */
+  pcfKernelSize: number;
+  /** 深度偏差（避免 shadow acne）。 */
+  bias: number;
+  /** 法线偏差（沿法线方向偏移，减少 peter-panning）。 */
+  normalBias: number;
+}
+
+/** 默认 shadow map 选项。 */
+export const DEFAULT_SHADOW_MAP_OPTIONS: ShadowMapOptions = {
+  resolution: 2048,
+  pcfKernelSize: 3,
+  bias: 0.001,
+  normalBias: 0.02,
+};
+
+/**
+ * GPU shadow map 渲染通道接口（E-07）。
+ *
+ * 后端实现此接口以执行 GPU 深度纹理渲染。调用方负责在场景渲染时
+ * 读取深度纹理并执行 PCF 采样。
+ */
+export interface ShadowMapPass {
+  /** 配置光源方向、阴影投射包围盒与本帧选项。在 execute 前调用。 */
+  prepare(
+    lightDirection: Vec3d,
+    shadowCastBounds: BoundingBox,
+    options: ShadowMapOptions,
+  ): void;
+  /**
+   * 执行 shadow map 渲染：将光源视角 VP 设置到 renderer，
+   * 然后调用 sceneDrawFn() 渲染场景到深度纹理。
+   */
+  execute(renderer: Renderer, sceneDrawFn: () => void): void;
+  /** 返回 shadow map 深度纹理句柄，供场景渲染时采样。 */
+  getShadowMapTexture(): TextureHandle;
+  /** 释放 GPU 资源（深度纹理、pipeline、buffer 等）。 */
+  dispose(): void;
 }

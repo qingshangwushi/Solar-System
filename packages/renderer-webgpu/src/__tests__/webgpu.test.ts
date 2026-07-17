@@ -20,12 +20,24 @@ describe('WebGPU Renderer', () => {
 describe('WebGPU Renderer Factory', () => {
   it('应在 Node 环境中报告不支持', () => {
     const factory = new WebGpuRendererFactory();
-    expect(factory.isSupported()).toBe(false);
+    expect(factory.isSupported('webgpu')).toBe(false);
+  });
+
+  it('对 webgl2 后端应返回 false', () => {
+    const factory = new WebGpuRendererFactory();
+    expect(factory.isSupported('webgl2')).toBe(false);
   });
 
   it('应能创建渲染器实例', async () => {
     const factory = new WebGpuRendererFactory();
-    const renderer = await factory.create();
+    const renderer = await factory.create({
+      width: 800,
+      height: 600,
+      pixelRatio: 1,
+      backend: 'webgpu',
+      antialias: true,
+      colorSpace: 'srgb',
+    });
     expect(renderer.backend).toBe('webgpu');
   });
 });

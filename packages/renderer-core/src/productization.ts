@@ -47,6 +47,11 @@ export interface UpdateStatus {
   downloadProgress: number;
   installProgress: number;
   status: 'idle' | 'checking' | 'downloading' | 'installing' | 'completed' | 'failed' | 'rollback';
+  /**
+   * 远端 manifest fetch 或解析失败时的错误信息（E-24 / N-05）。
+   * 成功时为 undefined；失败时 status='failed' 且 updateAvailable=false。
+   */
+  error?: string;
 }
 
 export interface UpdateManager {
@@ -56,6 +61,29 @@ export interface UpdateManager {
   rollback(): Promise<void>;
   getStatus(): UpdateStatus;
   subscribe(callback: (status: UpdateStatus) => void): () => void;
+}
+
+/**
+ * UpdateManager 配置（E-24 / N-05）。
+ *
+ * - currentVersion: 本地当前版本号，默认 '1.0.0'
+ * - manifestUrl: 远端 manifest URL，默认 '/manifest.json'；
+ *   manifest JSON 至少包含 `{ version: string, changelog?: string, downloadUrl?: string, size?: number, mandatory?: boolean }`
+ */
+export interface UpdateManagerConfig {
+  currentVersion?: string;
+  manifestUrl?: string;
+}
+
+/** 远端 manifest 最小契约。 */
+export interface RemoteManifest {
+  version: string;
+  changelog?: string;
+  releaseNotes?: string;
+  downloadUrl?: string;
+  size?: number;
+  mandatory?: boolean;
+  releaseDate?: string;
 }
 
 export interface TestResult {
@@ -95,10 +123,54 @@ export interface TestEnvironment {
   cpu: string;
 }
 
+/**
+ * TestExecutor 子进程执行结果（E-24 / N-05）。
+ *
+ * 真实实现通过 `node:child_process.spawn` 调用 `pnpm test --filter <package>`；
+ * 测试环境可注入 mock executor 避免实际 spawn。
+ */
+export interface TestExecutorResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface TestExecutor {
+  exec(command: string, args: string[]): Promise<TestExecutorResult>;
+}
+
+/**
+ * 单次 `pnpm test --filter <package>` 的运行结果（E-24 / N-05）。
+ *
+ * - passed: exitCode === 0
+ * - total / passed_count / failed_count / skipped_count: 从 stdout 解析的 vitest 统计
+ * - duration_ms: 调用耗时
+ * - output: 完整 stdout + stderr
+ * - error: spawn 失败或 exitCode != 0 时的错误信息
+ */
+export interface TestRunResult {
+  passed: boolean;
+  total: number;
+  passed_count: number;
+  failed_count: number;
+  skipped_count: number;
+  duration_ms: number;
+  output: string;
+  error?: string;
+}
+
 export interface TestRunner {
   runAll(): Promise<TestReport>;
   runSuite(suiteName: string): Promise<TestSuiteResult>;
-  runTest(suiteName: string, testName: string): Promise<TestResult>;
+  /**
+   * 运行指定包的测试（E-24 / N-05）。
+   *
+   * - 不传 packageName：运行 `pnpm test`（全部测试）
+   * - 传 packageName：运行 `pnpm test --filter <packageName>`
+   *
+   * 通过注入的 TestExecutor 执行；executor 不可用或 spawn 失败时返回 `{ passed: false, total: 0, ..., error }`。
+   */
+  runTest(packageName?: string): Promise<TestRunResult>;
   getTestList(): Array<{ suite: string; tests: string[] }>;
 }
 
@@ -323,80 +395,148 @@ export class ResourceValidatorImpl implements ResourceValidator {
 }
 
 export class UpdateManagerImpl implements UpdateManager {
-  private currentVersion = '1.0.0';
-  private latestVersion = '1.0.0';
-  private status: UpdateStatus = {
-    currentVersion: this.currentVersion,
-    latestVersion: this.latestVersion,
-    updateAvailable: false,
-    downloadProgress: 0,
-    installProgress: 0,
-    status: 'idle',
-  };
+  private currentVersion: string;
+  private latestVersion: string;
+  private readonly manifestUrl: string;
+  private status: UpdateStatus;
   private subscribers: Array<(status: UpdateStatus) => void> = [];
   private updatePackage: ArrayBuffer | null = null;
-  
+
+  constructor(config: UpdateManagerConfig = {}) {
+    this.currentVersion = config.currentVersion ?? '1.0.0';
+    this.latestVersion = this.currentVersion;
+    this.manifestUrl = config.manifestUrl ?? '/manifest.json';
+    this.status = {
+      currentVersion: this.currentVersion,
+      latestVersion: this.latestVersion,
+      updateAvailable: false,
+      downloadProgress: 0,
+      installProgress: 0,
+      status: 'idle',
+    };
+  }
+
+  /**
+   * 真实版本比对（E-24 / N-05）。
+   *
+   * - 通过 fetch 拉取 manifestUrl 解析为 RemoteManifest
+   * - 用语义化版本比较 currentVersion 与 manifest.version
+   * - 失败时返回 status='failed' + error，updateAvailable=false，不抛异常
+   */
   async checkForUpdates(): Promise<UpdateStatus> {
     this.status.status = 'checking';
+    this.status.error = undefined;
     this.notify();
-    
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    
-    const hasUpdate = Math.random() > 0.5;
-    if (hasUpdate) {
-      this.latestVersion = '1.1.0';
+
+    try {
+      if (typeof fetch !== 'function') {
+        throw new Error('fetch is not available in this environment');
+      }
+      const response = await fetch(this.manifestUrl);
+      if (!response.ok) {
+        throw new Error(`fetch ${this.manifestUrl} failed: HTTP ${response.status}`);
+      }
+      const manifest = (await response.json()) as RemoteManifest;
+      if (!manifest || typeof manifest.version !== 'string' || manifest.version.length === 0) {
+        throw new Error('remote manifest missing required field: version');
+      }
+
+      this.latestVersion = manifest.version;
+      const hasUpdate = this.compareVersions(this.currentVersion, manifest.version) < 0;
+
+      if (hasUpdate) {
+        this.status.updateAvailable = true;
+        this.status.updateInfo = {
+          version: manifest.version,
+          previousVersion: this.currentVersion,
+          releaseDate: manifest.releaseDate ? new Date(manifest.releaseDate) : new Date(),
+          changelog: manifest.changelog ?? manifest.releaseNotes ?? '',
+          downloadUrl: manifest.downloadUrl ?? '',
+          size: manifest.size ?? 0,
+          mandatory: manifest.mandatory ?? false,
+        };
+      } else {
+        this.status.updateAvailable = false;
+        this.status.updateInfo = undefined;
+      }
+
+      this.status.currentVersion = this.currentVersion;
       this.status.latestVersion = this.latestVersion;
-      this.status.updateAvailable = true;
-      this.status.updateInfo = {
-        version: this.latestVersion,
-        previousVersion: this.currentVersion,
-        releaseDate: new Date(),
-        changelog: 'Bug fixes and performance improvements',
-        downloadUrl: 'https://example.com/update',
-        size: 1024 * 1024 * 5,
-        mandatory: false,
-      };
+      this.status.status = 'idle';
+      this.status.error = undefined;
+    } catch (err) {
+      // 失败时不抛异常，返回 hasUpdate=false 等价的状态
+      this.latestVersion = this.currentVersion;
+      this.status.currentVersion = this.currentVersion;
+      this.status.latestVersion = this.currentVersion;
+      this.status.updateAvailable = false;
+      this.status.updateInfo = undefined;
+      this.status.status = 'failed';
+      this.status.error = err instanceof Error ? err.message : String(err);
     }
-    
-    this.status.status = 'idle';
+
     this.notify();
-    
     return this.status;
   }
-  
+
+  /**
+   * 语义化版本比较（major.minor.patch）。
+   * 返回 <0 表示 a<b，0 表示相等，>0 表示 a>b。
+   * 非数字段视为 0。
+   */
+  private compareVersions(a: string, b: string): number {
+    const parse = (v: string): number[] =>
+      v
+        .split('.')
+        .map((seg) => {
+          const n = parseInt(seg.replace(/[^0-9]/g, ''), 10);
+          return Number.isFinite(n) ? n : 0;
+        });
+    const pa = parse(a);
+    const pb = parse(b);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+      const ai = pa[i] ?? 0;
+      const bi = pb[i] ?? 0;
+      if (ai < bi) return -1;
+      if (ai > bi) return 1;
+    }
+    return 0;
+  }
+
   async downloadUpdate(info: UpdateInfo): Promise<void> {
     this.status.status = 'downloading';
     this.status.downloadProgress = 0;
     this.notify();
-    
+
     const chunks = 10;
     for (let i = 0; i <= chunks; i++) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       this.status.downloadProgress = (i / chunks) * 100;
       this.notify();
     }
-    
+
     this.updatePackage = new ArrayBuffer(info.size);
     this.status.status = 'idle';
     this.notify();
   }
-  
+
   async installUpdate(): Promise<void> {
     if (!this.updatePackage || !this.status.updateInfo) {
       throw new Error('No update package available');
     }
-    
+
     this.status.status = 'installing';
     this.status.installProgress = 0;
     this.notify();
-    
+
     const steps = 5;
     for (let i = 0; i <= steps; i++) {
       await new Promise((resolve) => setTimeout(resolve, 400));
       this.status.installProgress = (i / steps) * 100;
       this.notify();
     }
-    
+
     this.currentVersion = this.latestVersion;
     this.status.currentVersion = this.currentVersion;
     this.status.updateAvailable = false;
@@ -405,13 +545,13 @@ export class UpdateManagerImpl implements UpdateManager {
     this.updatePackage = null;
     this.notify();
   }
-  
+
   async rollback(): Promise<void> {
     this.status.status = 'rollback';
     this.notify();
-    
+
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    
+
     this.currentVersion = '1.0.0';
     this.latestVersion = '1.0.0';
     this.status.currentVersion = this.currentVersion;
@@ -421,14 +561,15 @@ export class UpdateManagerImpl implements UpdateManager {
     this.status.downloadProgress = 0;
     this.status.installProgress = 0;
     this.status.status = 'idle';
+    this.status.error = undefined;
     this.updatePackage = null;
     this.notify();
   }
-  
+
   getStatus(): UpdateStatus {
     return { ...this.status };
   }
-  
+
   subscribe(callback: (status: UpdateStatus) => void): () => void {
     this.subscribers.push(callback);
     return () => {
@@ -438,9 +579,54 @@ export class UpdateManagerImpl implements UpdateManager {
       }
     };
   }
-  
+
   private notify(): void {
     this.subscribers.forEach((callback) => callback({ ...this.status }));
+  }
+}
+
+/**
+ * 默认 TestExecutor：通过 `node:child_process.spawn` 调用 `pnpm test`（E-24 / N-05）。
+ *
+ * 在不支持 child_process 的环境（浏览器）下，exec 返回 exitCode=-1 与错误信息，
+ * 而非抛异常，保持 TestRunner.runTest 的"失败返回"契约。
+ */
+export class DefaultTestExecutor implements TestExecutor {
+  async exec(command: string, args: string[]): Promise<TestExecutorResult> {
+    let stdout = '';
+    let stderr = '';
+    try {
+      // 动态 import 避免浏览器环境打包时报错
+      const { spawn } = await import('node:child_process');
+      return await new Promise<TestExecutorResult>((resolve) => {
+        const child = spawn(command, args, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          shell: process.platform === 'win32',
+        });
+        child.stdout?.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString();
+        });
+        child.stderr?.on('data', (chunk: Buffer) => {
+          stderr += chunk.toString();
+        });
+        child.on('error', (err: Error) => {
+          resolve({
+            exitCode: -1,
+            stdout,
+            stderr: stderr + (stderr ? '\n' : '') + err.message,
+          });
+        });
+        child.on('close', (code: number | null) => {
+          resolve({ exitCode: code ?? -1, stdout, stderr });
+        });
+      });
+    } catch (err) {
+      return {
+        exitCode: -1,
+        stdout,
+        stderr: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 }
 
@@ -455,24 +641,29 @@ export class TestRunnerImpl implements TestRunner {
     { suite: 'Terrain', tests: ['Tile generation', 'LOD transitions', 'Surface height calculation'] },
     { suite: 'Events', tests: ['Eclipse detection', 'Event search', 'Cruise management'] },
   ];
-  
+  private readonly executor: TestExecutor;
+
+  constructor(executor?: TestExecutor) {
+    this.executor = executor ?? new DefaultTestExecutor();
+  }
+
   async runAll(): Promise<TestReport> {
     const startTime = Date.now();
     const suites: TestSuiteResult[] = [];
-    
+
     for (const suite of this.tests) {
       suites.push(await this.runSuite(suite.suite));
     }
-    
+
     const totalPass = suites.reduce((sum, s) => sum + s.passCount, 0);
     const totalFail = suites.reduce((sum, s) => sum + s.failCount, 0);
     const totalSkip = suites.reduce((sum, s) => sum + s.skipCount, 0);
     const totalDuration = Date.now() - startTime;
-    
-    const summary = totalFail === 0 
+
+    const summary = totalFail === 0
       ? `All ${totalPass} tests passed in ${totalDuration}ms`
       : `${totalPass} passed, ${totalFail} failed, ${totalSkip} skipped in ${totalDuration}ms`;
-    
+
     return {
       timestamp: new Date(),
       version: '1.0.0',
@@ -485,23 +676,30 @@ export class TestRunnerImpl implements TestRunner {
       summary,
     };
   }
-  
+
   async runSuite(suiteName: string): Promise<TestSuiteResult> {
     const startTime = Date.now();
     const suite = this.tests.find((t) => t.suite === suiteName);
     if (!suite) {
       throw new Error(`Suite not found: ${suiteName}`);
     }
-    
-    const results: TestResult[] = [];
-    for (const testName of suite.tests) {
-      results.push(await this.runTest(suiteName, testName));
-    }
-    
-    const passCount = results.filter((r) => r.status === 'pass').length;
-    const failCount = results.filter((r) => r.status === 'fail').length;
-    const skipCount = results.filter((r) => r.status === 'skip').length;
-    
+
+    // 通过 runTest(suiteName) 真实运行该包的测试，再合成 per-test TestResult
+    const runResult = await this.runTest(suiteName);
+    const status: 'pass' | 'fail' = runResult.passed ? 'pass' : 'fail';
+    const perTestDuration = Math.floor(runResult.duration_ms / Math.max(1, suite.tests.length));
+    const results: TestResult[] = suite.tests.map((testName) => ({
+      testName,
+      status,
+      duration: perTestDuration,
+      ...(status === 'fail' ? { error: runResult.error ?? `Suite ${suiteName} failed` } : {}),
+    }));
+
+    // 当真实执行未解析到 total 时（如 executor 不可用），fallback 用合成结果计数
+    const passCount = runResult.total > 0 ? runResult.passed_count : (runResult.passed ? suite.tests.length : 0);
+    const failCount = runResult.total > 0 ? runResult.failed_count : (runResult.passed ? 0 : suite.tests.length);
+    const skipCount = runResult.total > 0 ? runResult.skipped_count : 0;
+
     return {
       suiteName,
       results,
@@ -511,36 +709,93 @@ export class TestRunnerImpl implements TestRunner {
       duration: Date.now() - startTime,
     };
   }
-  
-  async runTest(suiteName: string, testName: string): Promise<TestResult> {
-    void suiteName;
+
+  /**
+   * 真实测试执行（E-24 / N-05）。
+   *
+   * - 通过注入的 TestExecutor 调用 `pnpm test --filter <packageName>`
+   * - 解析 vitest stdout 提取 total/passed/failed/skipped 计数
+   * - executor 不可用或 spawn 失败时返回 `{ passed: false, total: 0, ..., error }`
+   */
+  async runTest(packageName?: string): Promise<TestRunResult> {
     const startTime = Date.now();
-    
-    await new Promise((resolve) => setTimeout(resolve, 100 + Math.random() * 200));
-    
-    const rand = Math.random();
-    let status: 'pass' | 'fail' | 'skip' = 'pass';
-    let error: string | undefined;
-    
-    if (rand < 0.05) {
-      status = 'fail';
-      error = 'Test assertion failed';
-    } else if (rand < 0.08) {
-      status = 'skip';
+    const args = ['test'];
+    if (packageName) {
+      args.push('--filter', packageName);
     }
-    
-    return {
-      testName,
-      status,
-      duration: Date.now() - startTime,
-      error,
-    };
+
+    try {
+      const result = await this.executor.exec('pnpm', args);
+      const output = result.stdout + (result.stderr ? `\n${result.stderr}` : '');
+      const counts = this.parseTestCounts(result.stdout);
+      const duration_ms = Date.now() - startTime;
+      const passed = result.exitCode === 0;
+
+      const error = !passed && counts.total === 0
+        ? `pnpm test exited with code ${result.exitCode}`
+        : (!passed ? `pnpm test failed: ${counts.failed} of ${counts.total} tests` : undefined);
+
+      return {
+        passed,
+        total: counts.total,
+        passed_count: counts.passed,
+        failed_count: counts.failed,
+        skipped_count: counts.skipped,
+        duration_ms,
+        output,
+        ...(error !== undefined ? { error } : {}),
+      };
+    } catch (err) {
+      return {
+        passed: false,
+        total: 0,
+        passed_count: 0,
+        failed_count: 0,
+        skipped_count: 0,
+        duration_ms: Date.now() - startTime,
+        output: '',
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
-  
+
+  /**
+   * 从 vitest/jest 输出中解析测试统计。
+   *
+   * 支持的格式：
+   * - `Tests  12 passed (12)`
+   * - `Tests  10 passed | 2 failed (12)`
+   * - `Tests  8 passed | 2 failed | 2 skipped (12)`
+   * - `Tests  5 todo (5)`（视为 skipped）
+   */
+  private parseTestCounts(stdout: string): { total: number; passed: number; failed: number; skipped: number } {
+    const testsLine = stdout.match(/Tests\s+(.+?)\s*\((\d+)\)/);
+    if (!testsLine) {
+      return { total: 0, passed: 0, failed: 0, skipped: 0 };
+    }
+    const total = parseInt(testsLine[2] ?? '0', 10);
+    let passed = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    const detail = testsLine[1] ?? '';
+    const passedMatch = detail.match(/(\d+)\s+passed/);
+    const failedMatch = detail.match(/(\d+)\s+failed/);
+    const skippedMatch = detail.match(/(\d+)\s+skipped/);
+    const todoMatch = detail.match(/(\d+)\s+todo/);
+
+    if (passedMatch) passed = parseInt(passedMatch[1] ?? '0', 10);
+    if (failedMatch) failed = parseInt(failedMatch[1] ?? '0', 10);
+    if (skippedMatch) skipped = parseInt(skippedMatch[1] ?? '0', 10);
+    if (todoMatch) skipped += parseInt(todoMatch[1] ?? '0', 10);
+
+    return { total, passed, failed, skipped };
+  }
+
   getTestList(): Array<{ suite: string; tests: string[] }> {
     return this.tests;
   }
-  
+
   private getEnvironment(): TestEnvironment {
     return {
       os: 'Linux',

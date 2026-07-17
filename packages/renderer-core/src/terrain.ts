@@ -45,7 +45,6 @@ export interface Tile {
 
   getLODLevel(): number;
   isLeaf(): boolean;
-  needsRefinement(): boolean;
 }
 
 export interface TerrainTile extends Tile {
@@ -157,10 +156,6 @@ export class TerrainTileImpl implements TerrainTile {
 
   isLeaf(): boolean {
     return this.childrenIds.length === 0;
-  }
-
-  needsRefinement(): boolean {
-    return this.distance < 100000 && !this.isLeaf();
   }
 
   /**

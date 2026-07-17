@@ -10,13 +10,36 @@
  * - 预压缩 .br / .gz 文件支持
  * - Cache-Control: immutable（HTML 用 no-cache）
  * - 206 Range 支持 + If-None-Match → 304
+ * - HTTPS 支持：提供 --tls-cert / --tls-key 时启用 HTTPS（局域网部署所需，
+ *   WebGPU 要求 Secure Context：HTTPS 或 localhost）
+ *
+ * 部署示例：
+ *   # 本地开发（HTTP，默认 localhost；WebGPU 在 localhost 下视为 Secure Context）
+ *   node packages/server/src/server.ts
+ *
+ *   # 局域网部署（HTTPS，自签证书由用户提供）
+ *   openssl req -x509 -newkey rsa:2048 \
+ *     -keyout ./key.pem -out ./cert.pem -days 365 -nodes \
+ *     -subj "/CN=localhost"
+ *   node packages/server/src/server.ts --tls-cert=./cert.pem --tls-key=./key.pem
+ *
+ *   # 通过环境变量
+ *   TLS_CERT_PATH=./cert.pem TLS_KEY_PATH=./key.pem \
+ *     node packages/server/src/server.ts --host=0.0.0.0 --port=8443
+ *
+ * 注意：
+ * - 自签证书需用户自行生成并分发给客户端；首次访问需在浏览器中信任该证书。
+ * - 若仅提供 --tls-cert 而未提供 --tls-key（或反之），将回退到 HTTP 并打印警告。
+ * - 若证书/私钥文件读取失败，同样回退到 HTTP 并打印警告。
  */
 
-import http from 'http';
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
-import { fileURLToPath } from 'url';
+import http from 'node:http';
+import https from 'node:https';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,11 +55,34 @@ export interface ServerOptions {
   enablePrecompressed?: boolean;
   /** CORS 允许来源，默认 '*'。 */
   corsOrigin?: string;
+  /** TLS 证书文件路径（PEM）。与 tlsKeyPath 同时提供时启用 HTTPS。 */
+  tlsCertPath?: string;
+  /** TLS 私钥文件路径（PEM）。与 tlsCertPath 同时提供时启用 HTTPS。 */
+  tlsKeyPath?: string;
+  /** TLS 证书内容（PEM）。优先于 tlsCertPath，便于测试注入。 */
+  tlsCert?: string | Buffer;
+  /** TLS 私钥内容（PEM）。优先于 tlsKeyPath，便于测试注入。 */
+  tlsKey?: string | Buffer;
+}
+
+/** 解析后的服务器选项（所有基础字段已确定取值，TLS 字段视配置可能为 undefined）。 */
+export interface ResolvedServerOptions {
+  staticDir: string;
+  port: number;
+  host: string;
+  enablePrecompressed: boolean;
+  corsOrigin: string;
+  tlsCertPath?: string;
+  tlsKeyPath?: string;
+  tlsCert?: string | Buffer;
+  tlsKey?: string | Buffer;
+  /** 是否已启用 HTTPS（同时具备 cert 与 key 时为 true）。 */
+  tlsEnabled: boolean;
 }
 
 export interface ServerHandle {
-  server: http.Server;
-  options: Required<ServerOptions>;
+  server: http.Server | https.Server;
+  options: ResolvedServerOptions;
   close(): Promise<void>;
 }
 
@@ -168,6 +214,8 @@ function buildSecurityHeaders(): Record<string, string> {
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Embedder-Policy': 'require-corp',
     'Cross-Origin-Resource-Policy': 'same-origin',
+    // HSTS 在 HTTP 响应中浏览器会忽略，但保留发送以兼容现有测试与未来显式 HTTPS 场景；
+    // 真正生效在 HTTPS 模式下。
     'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
     'Content-Security-Policy': CSP_POLICY,
     'X-Content-Type-Options': 'nosniff',
@@ -199,7 +247,7 @@ function serveFile(
   stats: fs.Stats,
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  options: Required<ServerOptions>,
+  options: ResolvedServerOptions,
 ): void {
   const acceptEncoding = req.headers['accept-encoding'];
   const precompressed = options.enablePrecompressed
@@ -262,20 +310,14 @@ function serveFile(
     });
 }
 
-/** 创建静态服务器实例（不自动 listen，便于测试与组合）。 */
-export function createServer(options: ServerOptions = {}): ServerHandle {
-  const resolvedOptions: Required<ServerOptions> = {
-    staticDir:
-      options.staticDir ||
-      process.env.STATIC_DIR ||
-      path.join(__dirname, '../apps/web/dist'),
-    port: options.port ?? (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080),
-    host: options.host || process.env.HOST || '0.0.0.0',
-    enablePrecompressed: options.enablePrecompressed ?? true,
-    corsOrigin: options.corsOrigin || '*',
-  };
-
-  const server = http.createServer((req, res) => {
+/**
+ * 构建请求处理函数（HTTP 与 HTTPS 共享同一处理器）。
+ * 提取为独立函数便于在两种 server 模式间复用，也便于单元测试。
+ */
+export function createRequestHandler(
+  options: ResolvedServerOptions,
+): (req: http.IncomingMessage, res: http.ServerResponse) => void {
+  return (req, res) => {
     if (!req.url) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
       res.end('Bad Request');
@@ -286,20 +328,20 @@ export function createServer(options: ServerOptions = {}): ServerHandle {
 
     // 防止路径穿越
     const requestedPath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, '');
-    const filePath = path.join(resolvedOptions.staticDir, requestedPath);
+    const filePath = path.join(options.staticDir, requestedPath);
 
     fs.stat(filePath, (err, stats) => {
       if (err) {
         if (err.code === 'ENOENT') {
           // SPA fallback 到 index.html
-          const fallbackPath = path.join(resolvedOptions.staticDir, '/index.html');
+          const fallbackPath = path.join(options.staticDir, '/index.html');
           fs.stat(fallbackPath, (fallbackErr, fallbackStats) => {
             if (fallbackErr) {
               res.writeHead(404, { 'Content-Type': 'text/plain' });
               res.end('Not Found');
               return;
             }
-            serveFile(fallbackPath, fallbackStats, req, res, resolvedOptions);
+            serveFile(fallbackPath, fallbackStats, req, res, options);
           });
         } else {
           res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -316,32 +358,174 @@ export function createServer(options: ServerOptions = {}): ServerHandle {
             res.end('Not Found');
             return;
           }
-          serveFile(indexDir, dirStats, req, res, resolvedOptions);
+          serveFile(indexDir, dirStats, req, res, options);
         });
         return;
       }
 
-      serveFile(filePath, stats, req, res, resolvedOptions);
+      serveFile(filePath, stats, req, res, options);
     });
-  });
+  };
+}
+
+/** 读取 TLS 证书/私钥文件；失败时返回 null 并打印警告。 */
+function loadTlsMaterial(
+  tlsCertPath: string | undefined,
+  tlsKeyPath: string | undefined,
+  inlineCert?: string | Buffer,
+  inlineKey?: string | Buffer,
+): { cert: string | Buffer; key: string | Buffer } | null {
+  // 内联内容优先（测试注入场景）
+  if (inlineCert && inlineKey) {
+    return { cert: inlineCert, key: inlineKey };
+  }
+
+  if (!tlsCertPath && !tlsKeyPath) return null;
+  if (tlsCertPath && !tlsKeyPath) {
+    console.warn(
+      '[server] --tls-cert provided but --tls-key missing; falling back to HTTP.',
+    );
+    return null;
+  }
+  if (tlsKeyPath && !tlsCertPath) {
+    console.warn(
+      '[server] --tls-key provided but --tls-cert missing; falling back to HTTP.',
+    );
+    return null;
+  }
+
+  try {
+    const cert = inlineCert ?? fs.readFileSync(tlsCertPath!, 'utf8');
+    const key = inlineKey ?? fs.readFileSync(tlsKeyPath!, 'utf8');
+    return { cert, key };
+  } catch (err) {
+    console.warn(
+      `[server] Failed to read TLS cert/key files (${(err as NodeJS.ErrnoException).code ?? 'UNKNOWN'}); falling back to HTTP.`,
+    );
+    return null;
+  }
+}
+
+/** 创建静态服务器实例（不自动 listen，便于测试与组合）。 */
+export function createServer(options: ServerOptions = {}): ServerHandle {
+  const tlsCertPath = options.tlsCertPath || process.env.TLS_CERT_PATH;
+  const tlsKeyPath = options.tlsKeyPath || process.env.TLS_KEY_PATH;
+
+  const tlsMaterial = loadTlsMaterial(
+    tlsCertPath,
+    tlsKeyPath,
+    options.tlsCert,
+    options.tlsKey,
+  );
+  const tlsEnabled = !!tlsMaterial;
+
+  const resolvedOptions: ResolvedServerOptions = {
+    staticDir:
+      options.staticDir ||
+      process.env.STATIC_DIR ||
+      path.join(__dirname, '../apps/web/dist'),
+    port: options.port ?? (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080),
+    host: options.host || process.env.HOST || '0.0.0.0',
+    enablePrecompressed: options.enablePrecompressed ?? true,
+    corsOrigin: options.corsOrigin || '*',
+    tlsCertPath,
+    tlsKeyPath,
+    tlsCert: tlsMaterial?.cert,
+    tlsKey: tlsMaterial?.key,
+    tlsEnabled,
+  };
+
+  const requestHandler = createRequestHandler(resolvedOptions);
+
+  const server: http.Server | https.Server = tlsMaterial
+    ? https.createServer({ cert: tlsMaterial.cert, key: tlsMaterial.key }, requestHandler)
+    : http.createServer(requestHandler);
 
   return {
     server,
     options: resolvedOptions,
     close() {
       return new Promise((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
+        server.close((err) => {
+          // ERR_SERVER_NOT_RUNNING 表示服务器未 listen 或已关闭，视为成功关闭
+          if (err && (err as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') {
+            resolve();
+            return;
+          }
+          if (err) reject(err);
+          else resolve();
+        });
       });
     },
   };
 }
 
+/** 解析命令行参数（--tls-cert / --tls-key / --port / --host / --static-dir）。 */
+function parseCliArgs(): {
+  tlsCert?: string;
+  tlsKey?: string;
+  port?: number;
+  host?: string;
+  staticDir?: string;
+} {
+  try {
+    const { values } = parseArgs({
+      options: {
+        'tls-cert': { type: 'string' },
+        'tls-key': { type: 'string' },
+        'port': { type: 'string' },
+        'host': { type: 'string' },
+        'static-dir': { type: 'string' },
+      },
+      allowPositionals: false,
+      strict: false,
+    });
+    // parseArgs 的 values 类型在 strict:false 下为 Record<string, string | boolean | undefined>，
+    // 此处所有选项均声明为 type:'string'，断言为 string | undefined 以匹配返回类型。
+    const tlsCert = values['tls-cert'] as string | undefined;
+    const tlsKey = values['tls-key'] as string | undefined;
+    const portRaw = values.port as string | undefined;
+    const host = values.host as string | undefined;
+    const staticDir = values['static-dir'] as string | undefined;
+    return {
+      tlsCert,
+      tlsKey,
+      port: portRaw ? parseInt(portRaw, 10) : undefined,
+      host,
+      staticDir,
+    };
+  } catch {
+    // parseArgs 在遇到未知参数或类型错误时会抛出；保持向后兼容，回退到默认配置
+    return {};
+  }
+}
+
 // 仅在直接运行本模块时自动 listen；被 import 时不副作用启动
 if (isMainModule()) {
-  const handle = createServer();
+  const cli = parseCliArgs();
+  const handle = createServer({
+    port: cli.port,
+    host: cli.host,
+    staticDir: cli.staticDir,
+    tlsCertPath: cli.tlsCert,
+    tlsKeyPath: cli.tlsKey,
+  });
+
   handle.server.listen(handle.options.port, handle.options.host, () => {
-    console.log(`Static server running at http://${handle.options.host}:${handle.options.port}`);
+    const protocol = handle.options.tlsEnabled ? 'https' : 'http';
+    const mode = handle.options.tlsEnabled ? 'HTTPS (TLS enabled)' : 'HTTP (dev fallback)';
+    console.log(`Static server running at ${protocol}://${handle.options.host}:${handle.options.port}`);
+    console.log(`Mode: ${mode}`);
     console.log(`Serving files from: ${handle.options.staticDir}`);
+    if (handle.options.tlsCertPath) {
+      console.log(`TLS cert: ${handle.options.tlsCertPath}`);
+    }
+    if (handle.options.tlsKeyPath) {
+      console.log(`TLS key: ${handle.options.tlsKeyPath}`);
+    }
+    if (!handle.options.tlsEnabled) {
+      console.log('Tip: for LAN deployment (WebGPU secure context), use --tls-cert and --tls-key.');
+    }
     console.log('Press Ctrl+C to stop');
   });
 }

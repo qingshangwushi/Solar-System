@@ -1,11 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   ResourceValidatorImpl,
+  UpdateManagerImpl,
+  TestRunnerImpl,
   OpsManagerImpl,
   createResourceValidator,
   createOpsManager,
   type OpsMetricsProvider,
   type ResourceType,
+  type TestExecutor,
+  type RemoteManifest,
 } from '../productization.js';
 
 /**
@@ -18,6 +22,8 @@ import {
  * - checkExists 用 fetch HEAD（不再常真）
  * - getSize 用真实文件大小（不再随机）
  * - getStats 接入真实 PerformanceMonitor 数据
+ * - UpdateManager.checkForUpdates 用真实版本比对（E-24 / N-05）
+ * - TestRunner.runTest 用真实 TestExecutor 子进程执行（E-24 / N-05）
  */
 
 /** 构造可控的 fetch stub：HEAD/GET 分别返回不同结果。 */
@@ -261,5 +267,313 @@ describe('OpsManagerImpl.getStats (E-24: real PerformanceMonitor data)', () => {
     const stats = ops.getStats();
     expect(stats.uptime).toBeGreaterThanOrEqual(0);
     expect(Number.isInteger(stats.uptime)).toBe(true);
+  });
+});
+
+// ===========================================================================
+// E-24 / N-05: UpdateManager.checkForUpdates 真实版本比对
+// ===========================================================================
+describe('UpdateManagerImpl.checkForUpdates (E-24: real version comparison)', () => {
+  let originalFetch: typeof fetch | undefined;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    if (originalFetch !== undefined) {
+      globalThis.fetch = originalFetch;
+    } else {
+      // @ts-expect-error delete injected stub
+      delete globalThis.fetch;
+    }
+  });
+
+  /** 构造返回指定 RemoteManifest 的 fetch stub。 */
+  function setupManifestFetch(manifest: RemoteManifest, ok = true): typeof fetch {
+    const stub = vi.fn(async () => ({
+      ok,
+      status: ok ? 200 : 404,
+      json: async () => manifest,
+    })) as unknown as typeof fetch;
+    return stub;
+  }
+
+  it('should detect an update when remote manifest version is higher than current', async () => {
+    const manifest: RemoteManifest = {
+      version: '1.2.0',
+      changelog: 'Bug fixes',
+      downloadUrl: 'https://example.com/update-1.2.0',
+      size: 1024 * 1024 * 3,
+      mandatory: false,
+    };
+    globalThis.fetch = setupManifestFetch(manifest);
+
+    const manager = new UpdateManagerImpl({
+      currentVersion: '1.0.0',
+      manifestUrl: 'https://example.com/manifest.json',
+    });
+    const status = await manager.checkForUpdates();
+
+    expect(status.currentVersion).toBe('1.0.0');
+    expect(status.latestVersion).toBe('1.2.0');
+    expect(status.updateAvailable).toBe(true);
+    expect(status.status).toBe('idle');
+    expect(status.error).toBeUndefined();
+    expect(status.updateInfo).toBeDefined();
+    expect(status.updateInfo?.version).toBe('1.2.0');
+    expect(status.updateInfo?.previousVersion).toBe('1.0.0');
+    expect(status.updateInfo?.changelog).toBe('Bug fixes');
+    expect(status.updateInfo?.downloadUrl).toBe('https://example.com/update-1.2.0');
+    expect(status.updateInfo?.size).toBe(1024 * 1024 * 3);
+    // fetch 应以 manifestUrl 为参数调用一次
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('https://example.com/manifest.json');
+  });
+
+  it('should not detect an update when remote version equals current version', async () => {
+    const manifest: RemoteManifest = { version: '1.0.0' };
+    globalThis.fetch = setupManifestFetch(manifest);
+
+    const manager = new UpdateManagerImpl({ currentVersion: '1.0.0' });
+    const status = await manager.checkForUpdates();
+
+    expect(status.currentVersion).toBe('1.0.0');
+    expect(status.latestVersion).toBe('1.0.0');
+    expect(status.updateAvailable).toBe(false);
+    expect(status.updateInfo).toBeUndefined();
+    expect(status.status).toBe('idle');
+    expect(status.error).toBeUndefined();
+  });
+
+  it('should not detect an update when remote version is lower (rollback scenario)', async () => {
+    const manifest: RemoteManifest = { version: '0.9.0' };
+    globalThis.fetch = setupManifestFetch(manifest);
+
+    const manager = new UpdateManagerImpl({ currentVersion: '1.0.0' });
+    const status = await manager.checkForUpdates();
+
+    expect(status.updateAvailable).toBe(false);
+    expect(status.latestVersion).toBe('0.9.0');
+    expect(status.updateInfo).toBeUndefined();
+  });
+
+  it('should return hasUpdate=false with error when fetch rejects (no throw)', async () => {
+    const stub = vi.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+    globalThis.fetch = stub;
+
+    const manager = new UpdateManagerImpl({
+      currentVersion: '1.0.0',
+      manifestUrl: 'https://example.com/manifest.json',
+    });
+    // 不应抛异常
+    const status = await manager.checkForUpdates();
+
+    expect(status.updateAvailable).toBe(false);
+    expect(status.currentVersion).toBe('1.0.0');
+    expect(status.latestVersion).toBe('1.0.0');
+    expect(status.status).toBe('failed');
+    expect(status.error).toContain('network down');
+    expect(status.updateInfo).toBeUndefined();
+  });
+
+  it('should return hasUpdate=false with error when fetch returns non-2xx', async () => {
+    globalThis.fetch = setupManifestFetch({ version: '1.0.0' }, /* ok= */ false);
+
+    const manager = new UpdateManagerImpl({
+      currentVersion: '1.0.0',
+      manifestUrl: 'https://example.com/missing.json',
+    });
+    const status = await manager.checkForUpdates();
+
+    expect(status.updateAvailable).toBe(false);
+    expect(status.status).toBe('failed');
+    expect(status.error).toContain('HTTP 404');
+  });
+
+  it('should return hasUpdate=false with error when manifest missing version field', async () => {
+    // manifest 缺少 version 字段
+    globalThis.fetch = setupManifestFetch({} as RemoteManifest);
+
+    const manager = new UpdateManagerImpl({ currentVersion: '1.0.0' });
+    const status = await manager.checkForUpdates();
+
+    expect(status.updateAvailable).toBe(false);
+    expect(status.status).toBe('failed');
+    expect(status.error).toContain('version');
+  });
+
+  it('should treat 1.10.0 as newer than 1.9.0 (semantic, not lexical)', async () => {
+    globalThis.fetch = setupManifestFetch({ version: '1.10.0' });
+
+    const manager = new UpdateManagerImpl({ currentVersion: '1.9.0' });
+    const status = await manager.checkForUpdates();
+
+    expect(status.updateAvailable).toBe(true);
+    expect(status.latestVersion).toBe('1.10.0');
+  });
+
+  it('should notify subscribers with the final status', async () => {
+    globalThis.fetch = setupManifestFetch({ version: '1.1.0' });
+
+    const manager = new UpdateManagerImpl({ currentVersion: '1.0.0' });
+    const events: string[] = [];
+    manager.subscribe((s) => events.push(s.status));
+
+    await manager.checkForUpdates();
+
+    // 至少包含 'checking' 与终态
+    expect(events[0]).toBe('checking');
+    expect(events[events.length - 1]).toBe('idle');
+  });
+});
+
+// ===========================================================================
+// E-24 / N-05: TestRunner.runTest 真实子进程执行
+// ===========================================================================
+describe('TestRunnerImpl.runTest (E-24: real TestExecutor)', () => {
+  /** 构造可控的 TestExecutor mock，同时暴露 calls 数组供断言使用。 */
+  function makeExecutor(opts: {
+    exitCode?: number;
+    stdout?: string;
+    stderr?: string;
+    throw?: Error;
+  }): TestExecutor & { calls: Array<{ command: string; args: string[] }> } {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const exec = vi.fn(async (command: string, args: string[]) => {
+      calls.push({ command, args });
+      if (opts.throw) throw opts.throw;
+      return {
+        exitCode: opts.exitCode ?? 0,
+        stdout: opts.stdout ?? '',
+        stderr: opts.stderr ?? '',
+      };
+    });
+    return { exec, calls } as unknown as TestExecutor & { calls: typeof calls };
+  }
+
+  it('should run pnpm test --filter <package> and parse passing output', async () => {
+    const stdout = [
+      'RUN  v2.1.9',
+      '',
+      ' ✓ src/foo.test.ts (3 tests) 5ms',
+      ' ✓ src/bar.test.ts (1 test) 2ms',
+      '',
+      ' Test Files  2 passed (2)',
+      '      Tests  4 passed (4)',
+      '   Start at  02:00:00',
+      '   Duration  100ms',
+    ].join('\n');
+    const executor = makeExecutor({ exitCode: 0, stdout });
+
+    const runner = new TestRunnerImpl(executor);
+    const result = await runner.runTest('@solar-system/renderer-core');
+
+    // 应该调用 pnpm test --filter @solar-system/renderer-core
+    expect(executor.calls).toHaveLength(1);
+    expect(executor.calls[0]?.command).toBe('pnpm');
+    expect(executor.calls[0]?.args).toEqual(['test', '--filter', '@solar-system/renderer-core']);
+
+    expect(result.passed).toBe(true);
+    expect(result.total).toBe(4);
+    expect(result.passed_count).toBe(4);
+    expect(result.failed_count).toBe(0);
+    expect(result.skipped_count).toBe(0);
+    expect(result.error).toBeUndefined();
+    expect(result.output).toContain('Tests  4 passed (4)');
+    expect(result.duration_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it('should parse fail/skip counts when tests fail', async () => {
+    const stdout = [
+      'RUN  v2.1.9',
+      '',
+      ' ✓ src/foo.test.ts (2 tests) 5ms',
+      ' ✗ src/bar.test.ts (1 test) 2ms',
+      '',
+      ' Test Files  1 passed | 1 failed (2)',
+      '      Tests  2 passed | 1 failed | 1 skipped (4)',
+    ].join('\n');
+    const executor = makeExecutor({ exitCode: 1, stdout });
+
+    const runner = new TestRunnerImpl(executor);
+    const result = await runner.runTest('bad-package');
+
+    expect(result.passed).toBe(false);
+    expect(result.total).toBe(4);
+    expect(result.passed_count).toBe(2);
+    expect(result.failed_count).toBe(1);
+    expect(result.skipped_count).toBe(1);
+    expect(result.error).toContain('1 of 4');
+  });
+
+  it('should run pnpm test with no --filter when packageName is undefined', async () => {
+    const executor = makeExecutor({ exitCode: 0, stdout: 'Tests  1 passed (1)' });
+
+    const runner = new TestRunnerImpl(executor);
+    await runner.runTest();
+
+    expect(executor.calls[0]?.args).toEqual(['test']);
+  });
+
+  it('should return passed=false with error when executor throws', async () => {
+    const executor = makeExecutor({ throw: new Error('spawn EACCES') });
+
+    const runner = new TestRunnerImpl(executor);
+    const result = await runner.runTest('any-package');
+
+    expect(result.passed).toBe(false);
+    expect(result.total).toBe(0);
+    expect(result.passed_count).toBe(0);
+    expect(result.failed_count).toBe(0);
+    expect(result.skipped_count).toBe(0);
+    expect(result.error).toContain('spawn EACCES');
+    expect(result.output).toBe('');
+  });
+
+  it('should return passed=false with error when exitCode != 0 and no counts parsed', async () => {
+    // 输出不包含 vitest Tests 行，无法解析计数
+    const executor = makeExecutor({
+      exitCode: 2,
+      stdout: 'Usage: pnpm test [options]',
+      stderr: 'unknown option --filter',
+    });
+
+    const runner = new TestRunnerImpl(executor);
+    const result = await runner.runTest('bad-package');
+
+    expect(result.passed).toBe(false);
+    expect(result.total).toBe(0);
+    expect(result.error).toContain('exited with code 2');
+    expect(result.output).toContain('unknown option --filter');
+  });
+
+  it('should synthesize per-test TestResult in runSuite based on package run', async () => {
+    // runSuite 会调用 runTest(suiteName) 一次，并将整个包的结果合成 per-test 条目
+    const stdout = 'Tests  4 passed (4)';
+    const executor = makeExecutor({ exitCode: 0, stdout });
+
+    const runner = new TestRunnerImpl(executor);
+    const suiteResult = await runner.runSuite('TimeSystem');
+
+    // TimeSystem 套件定义了 4 个测试名
+    expect(suiteResult.suiteName).toBe('TimeSystem');
+    expect(suiteResult.results).toHaveLength(4);
+    expect(suiteResult.results.every((r) => r.status === 'pass')).toBe(true);
+    expect(suiteResult.passCount).toBe(4);
+    expect(suiteResult.failCount).toBe(0);
+    // 每个 TestResult 应有 testName
+    expect(suiteResult.results[0]?.testName).toBe('UTC to TAI conversion');
+  });
+
+  it('should default to DefaultTestExecutor when no executor injected (smoke check, does not actually spawn)', async () => {
+    // 不注入 executor：默认会用 child_process.spawn。
+    // 由于测试环境没有 'pnpm' 命令或会被实际执行，我们只验证类型契约而非真实运行。
+    // 为避免真实 spawn 拖慢测试，这里仅断言 runner 实例可用。
+    const runner = new TestRunnerImpl();
+    expect(typeof runner.runTest).toBe('function');
+    expect(typeof runner.runSuite).toBe('function');
+    expect(typeof runner.runAll).toBe('function');
   });
 });

@@ -22,6 +22,7 @@ import {
   type DrawCall,
   type BackendType,
   type RendererFactory,
+  type RendererConfig,
   registerRendererFactory,
 } from '@solar-system/renderer-core';
 
@@ -42,8 +43,11 @@ class WebGl2Renderer implements Renderer {
   private buffers = new Map<string, WebGLBuffer>();
   private textures = new Map<string, WebGLTexture>();
   private programs = new Map<string, WebGLProgram>();
+  /** 工厂创建时传入的渲染配置（可选），用于设置 canvas 尺寸、抗锯齿等。 */
+  private config: RendererConfig | null = null;
 
-  constructor() {
+  constructor(config?: RendererConfig) {
+    this.config = config ?? null;
     this.capabilities = {
       maxTextureSize: 8192,
       maxTextureArrayLayers: 256,
@@ -56,8 +60,20 @@ class WebGl2Renderer implements Renderer {
     };
   }
 
+  /** 返回工厂创建时传入的配置（如有），便于外部读取。 */
+  getConfig(): RendererConfig | null {
+    return this.config;
+  }
+
   async init(canvas: HTMLCanvasElement): Promise<void> {
-    const gl = canvas.getContext('webgl2');
+    // 应用工厂传入的 RendererConfig：抗锯齿通过 context attributes 传入
+    const contextAttributes: WebGLContextAttributes = {};
+    if (this.config) {
+      contextAttributes.antialias = this.config.antialias;
+      canvas.width = this.config.width;
+      canvas.height = this.config.height;
+    }
+    const gl = canvas.getContext('webgl2', contextAttributes);
     if (!gl) {
       throw new Error('WebGL2 is not supported');
     }
@@ -509,15 +525,30 @@ class WebGl2Renderer implements Renderer {
 }
 
 class WebGl2RendererFactory implements RendererFactory {
-  create(): Promise<Renderer> {
-    return Promise.resolve(new WebGl2Renderer());
+  create(config: RendererConfig): Promise<Renderer> {
+    return Promise.resolve(new WebGl2Renderer(config));
   }
 
-  isSupported(): boolean {
-    return typeof document !== 'undefined' && document.createElement('canvas').getContext('webgl2') !== null;
+  isSupported(backend: BackendType): boolean {
+    return (
+      backend === 'webgl2' &&
+      typeof document !== 'undefined' &&
+      document.createElement('canvas').getContext('webgl2') !== null
+    );
   }
 }
 
 registerRendererFactory('webgl2', new WebGl2RendererFactory());
 
 export { WebGl2Renderer, WebGl2RendererFactory };
+
+// E-06 / E-07：GPU 后处理管线 + Shadow Map 通道
+export {
+  WebGl2PostProcessingPipeline,
+  createWebGl2PostProcessingPipeline,
+} from './post-processing.js';
+export {
+  WebGl2ShadowMapPass,
+  createWebGl2ShadowMapPass,
+  SHADOW_PCF_GLSL,
+} from './shadow-map.js';

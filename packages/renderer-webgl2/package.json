@@ -11,7 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@solar-system/renderer-core": "workspace:*"
+    "@solar-system/renderer-core": "workspace:*",
+    "@solar-system/schemas": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

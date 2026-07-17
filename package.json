@@ -9,6 +9,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:contracts": "pnpm --filter @solar-system/contracts-tests test",
     "build": "pnpm -r build",
     "build:wasm": "wasm-pack build crates/astro-core --target web --out-dir ../../packages/astro-core-wasm/pkg",
     "dev": "pnpm --filter web dev",

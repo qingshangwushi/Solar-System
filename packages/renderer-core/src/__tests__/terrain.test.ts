@@ -158,6 +158,73 @@ describe('E-14 screen space error LOD', () => {
 });
 
 // ===========================================================================
+// E-14 死代码清理：needsRefinement 已删除，traverse 仅依赖 calculateScreenSpaceError
+// ===========================================================================
+describe('E-14 needsRefinement dead code removal', () => {
+  it('TerrainTileImpl no longer exposes a needsRefinement method', () => {
+    const tile = new TerrainTileImpl(
+      new TileCoordImpl(0, 0, 0, 0),
+      new TileBoundsImpl(0, 90, -90, 0),
+    );
+    // 死代码已删除：实例与原型链上均不应存在 needsRefinement
+    expect(typeof (tile as unknown as { needsRefinement?: unknown }).needsRefinement).toBe('undefined');
+    expect(Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(tile), 'needsRefinement')).toBe(false);
+  });
+
+  it('Tile interface contract no longer mentions needsRefinement (static check via keys)', () => {
+    // 构造一个实例并触发 distance 设置，再确认不会因为缺少 needsRefinement 而出错
+    const tile = new TerrainTileImpl(
+      new TileCoordImpl(1, 2, 3, 4),
+      new TileBoundsImpl(-10, 10, -10, 10),
+    );
+    tile.distance = 50000; // 旧 needsRefinement 在此距离会返回 true，现仅作为数据字段
+    tile.priority = 0.5;
+    expect(tile.distance).toBe(50000);
+    expect(tile.priority).toBe(0.5);
+    // 实例上可枚举的方法名不应包含 needsRefinement
+    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(tile));
+    expect(methods).not.toContain('needsRefinement');
+  });
+
+  it('traverse refines based on SSE, not on a hard-coded distance threshold', () => {
+    // 近距离 + 极小 viewportHeight → SSE 极小 → 不细分（与旧 distance<100000 行为相反）
+    // 这证明 traverse 不再依赖距离阈值，而是真正使用 SSE 公式。
+    const R = 6371000;
+    const controller = new TerrainLODControllerImpl({
+      maxLevel: 3,
+      radius: R,
+      // 极小的视口高度使 SSE 接近 0，即使相机非常近也不应细分
+      viewportHeight: 1,
+      sseThreshold: 2,
+    });
+    controller.update({ x: R * 1.001, y: 0, z: 0 }); // 距离地形约 6 km（远小于旧 100000 阈值）
+    const tiles = controller.getVisibleTiles();
+    // 由于 SSE 太小，应仅返回 6 个 level 0 根瓦片，不发生细分
+    expect(tiles.length).toBe(6);
+    const maxLevel = Math.max(...tiles.map((t) => t.level));
+    expect(maxLevel).toBe(0);
+  });
+
+  it('traverse refines when SSE exceeds threshold (verified by spying on calculateScreenSpaceError)', () => {
+    // 通过对比两组参数（仅 viewportHeight 不同）验证 traverse 真正依赖 SSE
+    const R = 6371000;
+    const camera = { x: R * 1.01, y: 0, z: 0 };
+
+    // 低 SSE：viewportHeight=1 → 不细分
+    const low = new TerrainLODControllerImpl({ maxLevel: 2, radius: R, viewportHeight: 1, sseThreshold: 2 });
+    low.update(camera);
+    const lowTiles = low.getVisibleTiles();
+    expect(Math.max(...lowTiles.map((t) => t.level))).toBe(0);
+
+    // 高 SSE：viewportHeight=10000 → 细分
+    const high = new TerrainLODControllerImpl({ maxLevel: 2, radius: R, viewportHeight: 10000, sseThreshold: 2 });
+    high.update(camera);
+    const highTiles = high.getVisibleTiles();
+    expect(Math.max(...highTiles.map((t) => t.level))).toBeGreaterThan(0);
+  });
+});
+
+// ===========================================================================
 // E-15：接入 bodyId + 真实高程
 // ===========================================================================
 describe('E-15 bodyId + real elevation', () => {

@@ -10,6 +10,7 @@ import type {
   BufferHandle,
   DrawCall,
   RenderPassDescriptor,
+  Renderer,
   TextureDescriptor,
   TextureFormat,
   TextureHandle,
@@ -1022,4 +1023,77 @@ export function createDefaultPipeline(params: PostProcessingParams = DEFAULT_POS
     pipeline.addStage(new VignetteStage(params.vignette));
   }
   return pipeline;
+}
+
+// ============================================================================
+// GPU Post-Processing Pipeline (E-06 补全)
+// ============================================================================
+//
+// 以下接口定义了真正的 GPU 后处理管线契约。与上面的 stages-based
+// PostProcessingPipeline（CPU 参考实现）互补：GPUPostProcessingPipeline
+// 面向具体后端（WebGPU / WebGL2）的 render pass 编排，由后端包实现。
+//
+// GPU pass 顺序（文档化）：
+//   HDRRenderTexture
+//     → BrightPassExtract        (提取亮度 > bloomThreshold 的像素)
+//     → DownsampleChain[N]       (高斯降采样，N 级，如 4 级)
+//     → UpsampleChain[N]         (高斯升采样 + 加性混合，N 级)
+//     → ToneMapping              (ACES / Reinhard / None)
+//     → ColorGrading             (LUT 查找，若提供 LUT；否则 passthrough)
+//     → Composite                (合成 HDR + Bloom + Vignette + 色差 + Dither)
+//     → Output
+// ============================================================================
+
+/**
+ * GPU 后处理选项。各后端实现读取此参数构建/更新 uniform 与 bind group。
+ */
+export interface PostProcessingOptions {
+  /** 曝光系数（线性缩放 HDR 颜色）。 */
+  exposure: number;
+  /** Bloom 亮度阈值：高于此值的像素参与 bloom。 */
+  bloomThreshold: number;
+  /** Bloom 强度（升采样加性混合系数）。 */
+  bloomStrength: number;
+  /** Bloom 降采样层级数（如 4）。 */
+  bloomLevels: number;
+  /** 色调映射类型。 */
+  toneMappingType: 'aces' | 'reinhard' | 'none';
+  /** 可选的颜色分级 LUT 纹理句柄；未提供则跳过 LUT 查找。 */
+  colorGradingLUT?: TextureHandle;
+  /** 暗角强度（0 = 无暗角，1 = 最强）。 */
+  vignetteIntensity: number;
+  /** 暗角衰减（控制暗角过渡平滑度）。 */
+  vignetteFalloff: number;
+  /** 色差强度（0 = 关闭）。 */
+  chromaticAberration: number;
+  /** 是否启用 dithering 抖动以消除色带。 */
+  dithering: boolean;
+}
+
+/** 默认 GPU 后处理选项。 */
+export const DEFAULT_GPU_POST_PROCESSING: PostProcessingOptions = {
+  exposure: 1.0,
+  bloomThreshold: 1.0,
+  bloomStrength: 0.5,
+  bloomLevels: 4,
+  toneMappingType: 'aces',
+  vignetteIntensity: 0.0,
+  vignetteFalloff: 0.5,
+  chromaticAberration: 0.0,
+  dithering: true,
+};
+
+/**
+ * GPU 后处理管线接口（E-06）。
+ *
+ * 后端（WebGPU / WebGL2）实现此接口以执行真正的 GPU fragment shader 后处理。
+ * 调用方按 prepare → execute 顺序调用；execute 内部完成所有 GPU pass 编排。
+ */
+export interface GPUPostProcessingPipeline {
+  /** 配置输入颜色纹理与本帧选项。在 execute 前调用。 */
+  prepare(inputColorTexture: TextureHandle, options: PostProcessingOptions): void;
+  /** 执行全部 GPU pass。renderer 必须已初始化。 */
+  execute(renderer: Renderer): void;
+  /** 释放所有 GPU 资源（中间纹理、pipeline、buffer 等）。 */
+  dispose(): void;
 }

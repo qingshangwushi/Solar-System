@@ -1,79 +1,75 @@
 /**
- * 诊断面板（任务 P0-22）。
+ * 诊断面板（任务 P0-22 / 修复 E-35 / R-01）。
+ *
+ * 修复 E-24 / R-01：移除 `Math.random()` 假数据与 `setInterval` FPS 模拟，
+ * 改为通过 `orchestrator.subscribeMetrics(metrics => setMetrics(metrics))`
+ * 订阅真实渲染指标（fps / frameTimeMs / drawCalls / triangles / textures /
+ * shaders / workerLatencyMs），首帧到达前显示 "—"。
  */
-
 import { useState, useEffect, useRef } from 'react';
+import type { AppOrchestrator, MetricsSnapshot } from '@solar-system/app-orchestrator';
 
-export interface DiagnosticsData {
-  fps: number;
-  frameTime: number;
-  memoryUsage: number;
-  gpuMemoryUsage: number;
-  drawCalls: number;
-  triangles: number;
-  textures: number;
-  shaders: number;
-  backend: string;
-  device: string;
-  platform: string;
-  browser: string;
-  version: string;
-  uptime: number;
+interface DiagnosticsPanelProps {
+  orchestrator: AppOrchestrator;
 }
 
-export default function DiagnosticsPanel() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [data, setData] = useState<DiagnosticsData>({
-    fps: 0,
-    frameTime: 0,
-    memoryUsage: 0,
-    gpuMemoryUsage: 0,
-    drawCalls: 0,
-    triangles: 0,
-    textures: 0,
-    shaders: 0,
-    backend: 'WebGPU',
-    device: 'Unknown',
-    platform: navigator.platform,
-    browser: navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Firefox') ? 'Firefox' : navigator.userAgent.includes('Safari') ? 'Safari' : 'Unknown',
-    version: '0.1.0',
-    uptime: 0,
-  });
+const APP_VERSION = '0.1.0';
 
+const PLATFORM =
+  typeof navigator !== 'undefined' ? navigator.platform : 'Unknown';
+const BROWSER =
+  typeof navigator !== 'undefined'
+    ? navigator.userAgent.includes('Chrome')
+      ? 'Chrome'
+      : navigator.userAgent.includes('Firefox')
+        ? 'Firefox'
+        : navigator.userAgent.includes('Safari')
+          ? 'Safari'
+          : 'Unknown'
+    : 'Unknown';
+
+export default function DiagnosticsPanel({ orchestrator }: DiagnosticsPanelProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
+  const [uptime, setUptime] = useState(0);
+
+  // 本地维护最近 60 帧的 frameTimeMs 历史用于绘制趋势图。
   const frameTimes = useRef<number[]>([]);
-  const lastTime = useRef(performance.now());
-  const startTime = useRef(performance.now());
+  const startTime = useRef(
+    typeof performance !== 'undefined' ? performance.now() : Date.now(),
+  );
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = performance.now();
-      const frameTime = now - lastTime.current;
-      lastTime.current = now;
-
-      frameTimes.current.push(frameTime);
+    let mounted = true;
+    const unsubscribe = orchestrator.subscribeMetrics((m) => {
+      if (!mounted) return;
+      setMetrics(m);
+      frameTimes.current.push(m.frameTimeMs);
       if (frameTimes.current.length > 60) {
         frameTimes.current.shift();
       }
+    });
+    // 运行时间由本地计时器驱动（每秒刷新一次显示）
+    const interval = setInterval(() => {
+      if (!mounted) return;
+      const now =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+      setUptime(now - startTime.current);
+    }, 1000);
+    return () => {
+      mounted = false;
+      unsubscribe();
+      clearInterval(interval);
+    };
+  }, [orchestrator]);
 
-      const avgFrameTime = frameTimes.current.reduce((a, b) => a + b, 0) / frameTimes.current.length;
-      const fps = Math.round(1000 / avgFrameTime);
-
-      const uptime = now - startTime.current;
-
-      setData((prev) => ({
-        ...prev,
-        fps,
-        frameTime: avgFrameTime,
-        uptime,
-        drawCalls: Math.floor(Math.random() * 100) + 10,
-        triangles: Math.floor(Math.random() * 500000) + 100000,
-        textures: Math.floor(Math.random() * 50) + 10,
-        shaders: Math.floor(Math.random() * 20) + 5,
-      }));
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, []);
+  const fps = metrics?.fps ?? 0;
+  const frameTime = metrics?.frameTimeMs ?? 0;
+  const drawCalls = metrics?.drawCalls;
+  const triangles = metrics?.triangles;
+  const textures = metrics?.textures;
+  const shaders = metrics?.shaders;
+  const workerLatencyMs = metrics?.workerLatencyMs;
 
   const formatTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
@@ -82,11 +78,15 @@ export default function DiagnosticsPanel() {
     return `${hours.toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
   };
 
-  const getFpsColor = (fps: number) => {
-    if (fps >= 55) return 'text-green-400';
-    if (fps >= 30) return 'text-yellow-400';
+  const getFpsColor = (f: number) => {
+    if (f >= 55) return 'text-green-400';
+    if (f >= 30) return 'text-yellow-400';
     return 'text-red-400';
   };
+
+  const formatInt = (v: number | undefined) => (v === undefined ? '—' : v);
+  const formatMs = (v: number | undefined) =>
+    v === undefined ? '—' : `${v.toFixed(2)}ms`;
 
   return (
     <>
@@ -110,29 +110,33 @@ export default function DiagnosticsPanel() {
         >
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-slate-200">诊断面板</h2>
-            <span className="text-accent" aria-label={`版本 ${data.version}`}>{data.version}</span>
+            <span className="text-accent" aria-label={`版本 ${APP_VERSION}`}>{APP_VERSION}</span>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between border-b border-space-700 pb-2">
               <span>运行时间</span>
-              <span className="font-mono text-slate-200">{formatTime(data.uptime)}</span>
+              <span className="font-mono text-slate-200">{formatTime(uptime)}</span>
             </div>
 
             <div className="flex items-center justify-between">
               <span>FPS</span>
-              <span className={`font-mono font-bold ${getFpsColor(data.fps)}`}>{data.fps}</span>
+              <span className={`font-mono font-bold ${getFpsColor(fps)}`}>
+                {metrics ? fps : '—'}
+              </span>
             </div>
 
             <div className="flex items-center justify-between">
               <span>帧时间</span>
-              <span className="font-mono text-slate-200">{data.frameTime.toFixed(2)}ms</span>
+              <span className="font-mono text-slate-200">
+                {metrics ? `${frameTime.toFixed(2)}ms` : '—'}
+              </span>
             </div>
 
-            <div className="h-12 w-full overflow-hidden rounded bg-space-800">
+            <div className="h-12 w-full overflow-hidden rounded bg-space-800" aria-hidden="true">
               <canvas
                 ref={(canvas) => {
-                  if (canvas) {
+                  if (canvas && metrics) {
                     const ctx = canvas.getContext('2d');
                     if (ctx) {
                       canvas.width = canvas.offsetWidth;
@@ -144,7 +148,8 @@ export default function DiagnosticsPanel() {
                       const maxTime = Math.max(...dataPoints, 33);
                       const step = canvas.width / Math.max(dataPoints.length, 1);
 
-                      ctx.strokeStyle = data.fps >= 55 ? '#4ade80' : data.fps >= 30 ? '#facc15' : '#f87171';
+                      ctx.strokeStyle =
+                        fps >= 55 ? '#4ade80' : fps >= 30 ? '#facc15' : '#f87171';
                       ctx.lineWidth = 2;
                       ctx.beginPath();
 
@@ -167,13 +172,17 @@ export default function DiagnosticsPanel() {
               <div className="mb-2 text-slate-500">渲染统计</div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 <span>Draw Calls</span>
-                <span className="text-right font-mono text-slate-200">{data.drawCalls}</span>
+                <span className="text-right font-mono text-slate-200">{formatInt(drawCalls)}</span>
                 <span>Triangles</span>
-                <span className="text-right font-mono text-slate-200">{(data.triangles / 1000).toFixed(1)}K</span>
+                <span className="text-right font-mono text-slate-200">
+                  {triangles === undefined ? '—' : `${(triangles / 1000).toFixed(1)}K`}
+                </span>
                 <span>Textures</span>
-                <span className="text-right font-mono text-slate-200">{data.textures}</span>
+                <span className="text-right font-mono text-slate-200">{formatInt(textures)}</span>
                 <span>Shaders</span>
-                <span className="text-right font-mono text-slate-200">{data.shaders}</span>
+                <span className="text-right font-mono text-slate-200">{formatInt(shaders)}</span>
+                <span>Worker 延迟</span>
+                <span className="text-right font-mono text-slate-200">{formatMs(workerLatencyMs)}</span>
               </div>
             </div>
 
@@ -181,20 +190,12 @@ export default function DiagnosticsPanel() {
               <div className="mb-2 text-slate-500">系统信息</div>
               <div className="space-y-1">
                 <div className="flex justify-between">
-                  <span>后端</span>
-                  <span className="text-slate-200">{data.backend}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>设备</span>
-                  <span className="text-slate-200">{data.device}</span>
-                </div>
-                <div className="flex justify-between">
                   <span>平台</span>
-                  <span className="text-slate-200">{data.platform}</span>
+                  <span className="text-slate-200">{PLATFORM}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>浏览器</span>
-                  <span className="text-slate-200">{data.browser}</span>
+                  <span className="text-slate-200">{BROWSER}</span>
                 </div>
               </div>
             </div>
@@ -202,7 +203,18 @@ export default function DiagnosticsPanel() {
             <div className="border-t border-space-700 pt-2">
               <button
                 onClick={() => {
-                  const info = JSON.stringify(data, null, 2);
+                  const info = JSON.stringify(
+                    {
+                      version: APP_VERSION,
+                      metrics,
+                      uptime,
+                      frame_times: frameTimes.current.slice(),
+                      platform: PLATFORM,
+                      browser: BROWSER,
+                    },
+                    null,
+                    2,
+                  );
                   navigator.clipboard.writeText(info);
                 }}
                 className="w-full rounded border border-space-600 py-1.5 text-xs text-slate-400 hover:bg-space-700 transition-colors"
@@ -212,13 +224,15 @@ export default function DiagnosticsPanel() {
               </button>
               <button
                 onClick={() => {
-                  // 下载 JSON 诊断包：Blob + URL.createObjectURL + 临时 <a download>
                   const bundle = {
                     schema: 'solar-system-diagnostics-bundle/v1',
-                    version: data.version,
+                    version: APP_VERSION,
                     generated_at: new Date().toISOString(),
-                    data,
+                    metrics,
                     frame_times: frameTimes.current.slice(),
+                    uptime,
+                    platform: PLATFORM,
+                    browser: BROWSER,
                   };
                   const blob = new Blob([JSON.stringify(bundle, null, 2)], {
                     type: 'application/json',
@@ -230,7 +244,6 @@ export default function DiagnosticsPanel() {
                   document.body.appendChild(a);
                   a.click();
                   document.body.removeChild(a);
-                  // 释放对象 URL，避免内存泄漏
                   URL.revokeObjectURL(url);
                 }}
                 className="mt-1 w-full rounded border border-space-600 py-1.5 text-xs text-slate-400 hover:bg-space-700 transition-colors"
