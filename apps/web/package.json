@@ -13,8 +13,13 @@
   "dependencies": {
     "@solar-system/app-orchestrator": "workspace:*",
     "@solar-system/astro-core-api": "workspace:*",
+    "@solar-system/astro-core-wasm": "workspace:*",
+    "@solar-system/body-renderers": "workspace:*",
     "@solar-system/diagnostics": "workspace:*",
     "@solar-system/navigation-service": "workspace:*",
+    "@solar-system/renderer-core": "workspace:*",
+    "@solar-system/renderer-webgl2": "workspace:*",
+    "@solar-system/renderer-webgpu": "workspace:*",
     "@solar-system/render-engine": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

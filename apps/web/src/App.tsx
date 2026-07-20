@@ -130,7 +130,12 @@ export default function App() {
       )}
       {state === 'ready' && (
         <>
-          <TopBar pureMode={pureMode} onTogglePureMode={() => setPureMode((v) => !v)} />
+          <TopBar
+            pureMode={pureMode}
+            onTogglePureMode={() => setPureMode((v) => !v)}
+            onSelectBody={(bodyId) => setSelectedBodyId(bodyId as number)}
+            currentTargetName={selectedBodyId !== null ? `天体 #${selectedBodyId}` : '太阳系全景'}
+          />
           <div className="flex flex-1 overflow-hidden">
             {!pureMode && (
               <LeftPanel
@@ -141,7 +146,7 @@ export default function App() {
             <SceneViewport orchestrator={orchestrator} />
             {!pureMode && <RightPanel />}
           </div>
-          {!pureMode && <BottomBar />}
+          {!pureMode && <BottomBar orchestrator={orchestrator} />}
           <DiagnosticsPanel orchestrator={orchestrator} />
         </>
       )}

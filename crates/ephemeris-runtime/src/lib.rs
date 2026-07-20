@@ -7,7 +7,9 @@
 #![allow(missing_docs)]
 
 pub mod chebyshev;
+pub mod mean_elements;
 pub mod provider;
 
 pub use chebyshev::{chebyshev_eval, chebyshev_eval_derivative, ChebyshevSegment};
+pub use mean_elements::{MeanElements, MeanElementsProvider};
 pub use provider::{EphemerisError, EphemerisProvider, EphemerisQuery, Precision, StateVector};

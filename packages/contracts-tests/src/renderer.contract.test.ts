@@ -124,6 +124,8 @@ class MockRenderer implements Renderer {
   ): Promise<Uint8Array> {
     return new Uint8Array(width * height * 4);
   }
+
+  setViewProj(_matrix: ArrayLike<number>): void {}
 }
 
 // ---------------------------------------------------------------------------

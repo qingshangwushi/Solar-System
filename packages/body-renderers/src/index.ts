@@ -7,6 +7,7 @@ import {
   type TextureHandle,
   type PipelineDescriptor,
   type VertexAttribute,
+  type BackendType,
 } from '@solar-system/renderer-core';
 
 export type BodyId = number | string;
@@ -373,11 +374,12 @@ struct VOut {
   @location(1) normal: vec3<f32>,
 };
 @group(0) @binding(0) var<uniform> u: array<vec4<f32>, 16>;
+@group(1) @binding(0) var<uniform> viewProj: mat4x4<f32>;
 @vertex
 fn vs_main(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>) -> VOut {
   var o: VOut;
   let m = mat4x4<f32>(u[0], u[1], u[2], u[3]);
-  o.pos = m * vec4<f32>(position, 1.0);
+  o.pos = viewProj * m * vec4<f32>(position, 1.0);
   o.uv = uv;
   o.normal = normalize((m * vec4<f32>(normal, 0.0)).xyz);
   return o;
@@ -466,6 +468,185 @@ fn fs_main(@location(0) uv: vec2<f32>, @location(1) normal: vec3<f32>) -> @locat
   return vec4<f32>(color, alpha);
 }
 `;
+
+// ---------------------------------------------------------------------------
+// GLSL ES 3.00 着色器变体（WebGL2 后端使用）
+//
+// 每个 WGSL 着色器都有对应的 GLSL 版本，逻辑完全一致：
+// - 顶点着色器应用 model 矩阵（从 UBO u[0..3]）+ viewProj（u_viewProj uniform）
+// - 片段着色器从 UBO 读取材质参数，计算光照/大气/条带等效果
+// - UBO 布局：layout(std140, binding=0) uniform BodyUniforms { vec4 u[16]; }
+// ---------------------------------------------------------------------------
+
+const GLSL_VERSION = '#version 300 es\nprecision highp float;\n';
+
+const GLSL_VERTEX_SHADER = /* glsl */ `
+${GLSL_VERSION}
+layout(location=0) in vec3 position;
+layout(location=1) in vec3 normal;
+layout(location=2) in vec2 uv;
+layout(std140) uniform BodyUniforms {
+  vec4 u[16];
+};
+uniform mat4 u_viewProj;
+out vec2 v_uv;
+out vec3 v_normal;
+void main() {
+  mat4 model = mat4(u[0], u[1], u[2], u[3]);
+  vec4 worldPos = model * vec4(position, 1.0);
+  gl_Position = u_viewProj * worldPos;
+  v_uv = uv;
+  v_normal = normalize((model * vec4(normal, 0.0)).xyz);
+}
+`;
+
+const GLSL_SUN_FRAGMENT_SHADER = /* glsl */ `
+${GLSL_VERSION}
+layout(std140) uniform BodyUniforms {
+  vec4 u[16];
+};
+in vec2 v_uv;
+in vec3 v_normal;
+out vec4 fragColor;
+void main() {
+  float time = u[4].x;
+  vec3 color = u[6].xyz;
+  float intensity = u[6].w;
+  float corona = u[7].x;
+  float flare = u[7].y;
+  float rim = pow(1.0 - max(0.0, v_normal.z), 2.0);
+  float pulse = 0.8 + 0.2 * sin(time);
+  vec3 col = color * intensity + vec3(corona * rim * pulse + flare * 0.1);
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+const GLSL_PBR_FRAGMENT_SHADER = /* glsl */ `
+${GLSL_VERSION}
+layout(std140) uniform BodyUniforms {
+  vec4 u[16];
+};
+in vec2 v_uv;
+in vec3 v_normal;
+out vec4 fragColor;
+void main() {
+  vec3 n = normalize(v_normal);
+  vec3 sunDir = normalize(u[5].xyz);
+  vec3 baseColor = u[6].xyz;
+  float roughness = u[6].w;
+  float metalness = u[7].x;
+  float ndl = max(0.0, dot(n, sunDir));
+  vec3 diffuse = baseColor * ndl;
+  float spec = pow(ndl, mix(4.0, 128.0, 1.0 - roughness)) * metalness;
+  fragColor = vec4(diffuse + vec3(spec), 1.0);
+}
+`;
+
+const GLSL_EARTH_FRAGMENT_SHADER = /* glsl */ `
+${GLSL_VERSION}
+layout(std140) uniform BodyUniforms {
+  vec4 u[16];
+};
+in vec2 v_uv;
+in vec3 v_normal;
+out vec4 fragColor;
+void main() {
+  vec3 n = normalize(v_normal);
+  float time = u[4].x;
+  vec3 baseColor = u[6].xyz;
+  vec3 atmoColor = u[7].xyz;
+  float atmoIntensity = u[7].w;
+  float cloudCoverage = u[8].x;
+  float rim = pow(1.0 - max(0.0, n.z), 3.0);
+  vec3 base = baseColor * (0.5 + 0.5 * n.y);
+  float cloud = cloudCoverage * (0.5 + 0.5 * sin(v_uv.x * 20.0 + time));
+  vec3 atmo = atmoColor * atmoIntensity * rim;
+  fragColor = vec4(base + atmo + vec3(cloud * 0.2), 1.0);
+}
+`;
+
+const GLSL_GAS_GIANT_FRAGMENT_SHADER = /* glsl */ `
+${GLSL_VERSION}
+layout(std140) uniform BodyUniforms {
+  vec4 u[16];
+};
+in vec2 v_uv;
+in vec3 v_normal;
+out vec4 fragColor;
+void main() {
+  float time = u[4].x;
+  vec3 baseColor = u[6].xyz;
+  float bandCount = u[6].w;
+  float bandSeed = u[7].x;
+  float bandSpeed = u[7].y;
+  float bands = sin(v_uv.y * bandCount * 6.28318 + bandSeed + time * bandSpeed) * 0.5 + 0.5;
+  vec3 col = mix(baseColor * 0.7, baseColor * 1.2, bands);
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+const GLSL_RING_FRAGMENT_SHADER = /* glsl */ `
+${GLSL_VERSION}
+layout(std140) uniform BodyUniforms {
+  vec4 u[16];
+};
+in vec2 v_uv;
+in vec3 v_normal;
+out vec4 fragColor;
+void main() {
+  float time = u[4].x;
+  vec3 color = u[6].xyz;
+  float opacity = u[6].w;
+  float bands = sin(v_uv.x * 80.0 + time * 0.5) * 0.5 + 0.5;
+  float alpha = opacity * (0.5 + 0.5 * bands);
+  fragColor = vec4(color, alpha);
+}
+`;
+
+/**
+ * 着色器种类：顶点 + 各类片段着色器。
+ * 每个着色器同时存在 WGSL（WebGPU）与 GLSL ES 3.00（WebGL2）两个版本。
+ */
+type ShaderKind = 'vertex' | 'sun' | 'pbr' | 'earth' | 'gas_giant' | 'ring';
+
+/** WGSL 着色器表（WebGPU 后端）。 */
+const WGSL_SHADERS: Record<ShaderKind, string> = {
+  vertex: SPHERE_VERTEX_SHADER,
+  sun: SUN_FRAGMENT_SHADER,
+  pbr: PBR_FRAGMENT_SHADER,
+  earth: EARTH_FRAGMENT_SHADER,
+  gas_giant: GAS_GIANT_FRAGMENT_SHADER,
+  ring: RING_FRAGMENT_SHADER,
+};
+
+/** GLSL ES 3.00 着色器表（WebGL2 后端）。 */
+const GLSL_SHADERS: Record<ShaderKind, string> = {
+  vertex: GLSL_VERTEX_SHADER,
+  sun: GLSL_SUN_FRAGMENT_SHADER,
+  pbr: GLSL_PBR_FRAGMENT_SHADER,
+  earth: GLSL_EARTH_FRAGMENT_SHADER,
+  gas_giant: GLSL_GAS_GIANT_FRAGMENT_SHADER,
+  ring: GLSL_RING_FRAGMENT_SHADER,
+};
+
+/**
+ * 按渲染后端选择着色器源码。
+ *
+ * WebGPU 使用 WGSL（@vertex/@fragment 语法）；
+ * WebGL2 使用 GLSL ES 3.00（#version 300 es，layout 限定符）。
+ * 两个版本的着色器逻辑完全一致，仅语法不同。
+ *
+ * 注意：GLSL ES 3.00 规范要求 `#version 300 es` 必须出现在着色器源码的
+ * 第一行。但本文件的 GLSL 着色器模板字面量都以反引号+换行开头，导致
+ * `#version` 被推到第二行，编译会失败并报：
+ *   `ERROR: 0:2: '#version directive must occur on the first line'`
+ * 这里用 replace(/^\n+/) 去除所有前导换行，确保 `#version` 位于第一行。
+ * WGSL 没有此约束，但去除前导换行对其也无害。
+ */
+function selectShader(backend: BackendType, kind: ShaderKind): string {
+  const src = backend === 'webgpu' ? WGSL_SHADERS[kind] : GLSL_SHADERS[kind];
+  return src.replace(/^\n+/, '');
+}
 
 /** Minimal geometry contract consumed by BodyRenderResources (satisfied by SphereGeometry). */
 interface BodyGeometry {
@@ -603,6 +784,7 @@ class BodyRenderResources {
       this.uniformBuffer = this.renderer.createBuffer({
         size: this.uniformData.byteLength,
         usage: 'dynamic',
+        target: 'uniform',
         data: this.uniformData,
       });
     }
@@ -611,6 +793,9 @@ class BodyRenderResources {
   /**
    * Initializes (lazily), uploads the latest per-frame uniform data, then issues
    * a real beginPass/draw/endPass/submit referencing the geometry's BufferHandles.
+   *
+   * 颜色附件使用 loadOp='load'（保留画布现有内容），使多个 body 渲染器
+   * 能在同一画布上叠加绘制；深度附件每次清空以确保 depth test 正确。
    */
   render(uniformData?: ArrayBuffer | null): void {
     this.init();
@@ -622,7 +807,7 @@ class BodyRenderResources {
         {
           texture: this.colorTarget!,
           clear: [0, 0, 0, 0],
-          loadOp: 'clear',
+          loadOp: 'load',
           storeOp: 'store',
         },
       ],
@@ -716,11 +901,13 @@ function createRingGeometry(
   const vertexBuffer = renderer.createBuffer({
     size: interleaved.byteLength,
     usage: 'static',
+    target: 'vertex',
     data: interleaved.buffer,
   });
   const indexBuffer = renderer.createBuffer({
     size: indices.byteLength,
     usage: 'static',
+    target: 'index',
     data: indices.buffer,
   });
 
@@ -882,11 +1069,13 @@ export function createIrregularGeometry(
   const vertexBuffer = renderer.createBuffer({
     size: interleaved.byteLength,
     usage: 'static',
+    target: 'vertex',
     data: interleaved.buffer,
   });
   const indexBuffer = renderer.createBuffer({
     size: indices.byteLength,
     usage: 'static',
+    target: 'index',
     data: indices.buffer,
   });
 
@@ -974,8 +1163,8 @@ export class SunRendererImpl implements SunRenderer {
       renderer,
       this.geometry,
       {
-        vertexShader: { stage: 'vertex', source: SPHERE_VERTEX_SHADER, entryPoint: 'vs_main' },
-        fragmentShader: { stage: 'fragment', source: SUN_FRAGMENT_SHADER, entryPoint: 'fs_main' },
+        vertexShader: { stage: 'vertex', source: selectShader(renderer.backend, 'vertex'), entryPoint: 'vs_main' },
+        fragmentShader: { stage: 'fragment', source: selectShader(renderer.backend, 'sun'), entryPoint: 'fs_main' },
         vertexAttributes: BODY_VERTEX_ATTRIBUTES,
         topology: 'triangles',
         depthTest: true,
@@ -1098,8 +1287,8 @@ export class SolidPlanetRenderer implements BodyRenderer {
       renderer,
       this.geometry,
       {
-        vertexShader: { stage: 'vertex', source: SPHERE_VERTEX_SHADER, entryPoint: 'vs_main' },
-        fragmentShader: { stage: 'fragment', source: PBR_FRAGMENT_SHADER, entryPoint: 'fs_main' },
+        vertexShader: { stage: 'vertex', source: selectShader(renderer.backend, 'vertex'), entryPoint: 'vs_main' },
+        fragmentShader: { stage: 'fragment', source: selectShader(renderer.backend, 'pbr'), entryPoint: 'fs_main' },
         vertexAttributes: BODY_VERTEX_ATTRIBUTES,
         topology: 'triangles',
         depthTest: true,
@@ -1223,8 +1412,8 @@ export class EarthRendererImpl implements EarthRenderer {
       renderer,
       this.geometry,
       {
-        vertexShader: { stage: 'vertex', source: SPHERE_VERTEX_SHADER, entryPoint: 'vs_main' },
-        fragmentShader: { stage: 'fragment', source: EARTH_FRAGMENT_SHADER, entryPoint: 'fs_main' },
+        vertexShader: { stage: 'vertex', source: selectShader(renderer.backend, 'vertex'), entryPoint: 'vs_main' },
+        fragmentShader: { stage: 'fragment', source: selectShader(renderer.backend, 'earth'), entryPoint: 'fs_main' },
         vertexAttributes: BODY_VERTEX_ATTRIBUTES,
         topology: 'triangles',
         depthTest: true,
@@ -1358,8 +1547,8 @@ export class GasGiantRendererImpl implements GasGiantRenderer {
       renderer,
       this.geometry,
       {
-        vertexShader: { stage: 'vertex', source: SPHERE_VERTEX_SHADER, entryPoint: 'vs_main' },
-        fragmentShader: { stage: 'fragment', source: GAS_GIANT_FRAGMENT_SHADER, entryPoint: 'fs_main' },
+        vertexShader: { stage: 'vertex', source: selectShader(renderer.backend, 'vertex'), entryPoint: 'vs_main' },
+        fragmentShader: { stage: 'fragment', source: selectShader(renderer.backend, 'gas_giant'), entryPoint: 'fs_main' },
         vertexAttributes: BODY_VERTEX_ATTRIBUTES,
         topology: 'triangles',
         depthTest: true,
@@ -1488,8 +1677,8 @@ export class RingRendererImpl implements RingRenderer {
       renderer,
       this.geometry,
       {
-        vertexShader: { stage: 'vertex', source: SPHERE_VERTEX_SHADER, entryPoint: 'vs_main' },
-        fragmentShader: { stage: 'fragment', source: RING_FRAGMENT_SHADER, entryPoint: 'fs_main' },
+        vertexShader: { stage: 'vertex', source: selectShader(renderer.backend, 'vertex'), entryPoint: 'vs_main' },
+        fragmentShader: { stage: 'fragment', source: selectShader(renderer.backend, 'ring'), entryPoint: 'fs_main' },
         vertexAttributes: BODY_VERTEX_ATTRIBUTES,
         topology: 'triangles',
         depthTest: true,
@@ -1635,8 +1824,8 @@ export class IrregularBodyRenderer implements BodyRenderer {
       renderer,
       this.geometry,
       {
-        vertexShader: { stage: 'vertex', source: SPHERE_VERTEX_SHADER, entryPoint: 'vs_main' },
-        fragmentShader: { stage: 'fragment', source: PBR_FRAGMENT_SHADER, entryPoint: 'fs_main' },
+        vertexShader: { stage: 'vertex', source: selectShader(renderer.backend, 'vertex'), entryPoint: 'vs_main' },
+        fragmentShader: { stage: 'fragment', source: selectShader(renderer.backend, 'pbr'), entryPoint: 'fs_main' },
         vertexAttributes: BODY_VERTEX_ATTRIBUTES,
         topology: 'triangles',
         depthTest: true,

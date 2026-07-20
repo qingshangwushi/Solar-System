@@ -81,6 +81,7 @@ function createMockRenderer(order: string[]): { renderer: Renderer; calls: MockR
     endPass,
     submit,
     readPixels: vi.fn(async () => new Uint8Array(0)),
+    setViewProj: vi.fn(),
   } as unknown as Renderer;
 
   return { renderer, calls: { beginPass, draw, endPass, submit } };

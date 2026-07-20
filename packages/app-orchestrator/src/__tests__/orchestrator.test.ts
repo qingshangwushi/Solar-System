@@ -69,6 +69,7 @@ const evaluateSnapshotMock = vi.fn(async (_bodyIds: number[], _utc: number) => (
 }));
 const clientDisposeMock = vi.fn();
 const isReadyMock = vi.fn(() => true);
+const registerEphemerisMock = vi.fn(async (_bodyJson: string) => undefined);
 
 class MockAstroCoreClient {
   static initCalls = 0;
@@ -93,6 +94,9 @@ class MockAstroCoreClient {
   async evaluateSnapshot(bodyIds: number[], utc: number): Promise<unknown> {
     return evaluateSnapshotMock(bodyIds, utc);
   }
+  async registerEphemeris(bodyJson: string): Promise<void> {
+    return registerEphemerisMock(bodyJson);
+  }
   dispose(): void {
     clientDisposeMock();
   }
@@ -101,9 +105,18 @@ class MockAstroCoreClient {
   }
 }
 
-vi.mock('@solar-system/astro-core-api', () => ({
-  AstroCoreClient: MockAstroCoreClient,
-}));
+vi.mock('@solar-system/astro-core-api', async (importOriginal) => {
+  // 保留真实模块的所有导出（parseSsphToJson、SsphParseError 等），
+  // 仅替换 AstroCoreClient 为 mock 实现。
+  // 关键：orchestrator 的 phaseResourceLoad 现在从本包导入 parseSsphToJson/SsphParseError
+  // 用于解析 SSPH 二进制；若 mock 完全覆盖模块，这些绑定会变成 undefined，
+  // 导致 catch 块中 `e instanceof SsphParseError` 抛 TypeError（右侧不可调用）。
+  const actual = await importOriginal<typeof import('@solar-system/astro-core-api')>();
+  return {
+    ...actual,
+    AstroCoreClient: MockAstroCoreClient,
+  };
+});
 
 // 3. @solar-system/resource-runtime：ResourceManager 用桩替换
 const resourceManagerClearMock = vi.fn();

@@ -1,0 +1,818 @@
+[
+  {
+    "id": "cruise-solar-system-tour",
+    "name": "太阳系环游",
+    "description": "从太阳出发，依次探访八大行星的壮丽旅程",
+    "waypoints": [
+      {
+        "bodyId": "sun",
+        "name": "太阳",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 10
+      },
+      {
+        "bodyId": "mercury",
+        "name": "水星",
+        "position": {
+          "x": 0.39,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 45,
+        "pauseDuration": 10
+      },
+      {
+        "bodyId": "venus",
+        "name": "金星",
+        "position": {
+          "x": 0.72,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 45,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "earth",
+        "name": "地球",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "mars",
+        "name": "火星",
+        "position": {
+          "x": 1.52,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "jupiter",
+        "name": "木星",
+        "position": {
+          "x": 5.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "saturn",
+        "name": "土星",
+        "position": {
+          "x": 9.5,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "uranus",
+        "name": "天王星",
+        "position": {
+          "x": 19.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "neptune",
+        "name": "海王星",
+        "position": {
+          "x": 30.1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      }
+    ],
+    "totalDuration": 600,
+    "recommendedTime": "白天",
+    "featured": true
+  },
+  {
+    "id": "cruise-moon-landing",
+    "name": "登月之旅",
+    "description": "从地球出发，飞越地月系统，体验月球表面",
+    "waypoints": [
+      {
+        "bodyId": "earth",
+        "name": "地球",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "moon",
+        "name": "月球",
+        "position": {
+          "x": 1.00257,
+          "y": 0,
+          "z": 0.00257
+        },
+        "duration": 120,
+        "pauseDuration": 30
+      }
+    ],
+    "totalDuration": 210,
+    "recommendedTime": "夜晚",
+    "featured": true
+  },
+  {
+    "id": "cruise-ring-world",
+    "name": "光环世界",
+    "description": "近距离欣赏土星壮观的环系",
+    "waypoints": [
+      {
+        "bodyId": "saturn",
+        "name": "土星",
+        "position": {
+          "x": 9.5,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "saturn-rings-inner",
+        "name": "内环",
+        "position": {
+          "x": 9.5,
+          "y": 0.007,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "saturn-rings-outer",
+        "name": "外环",
+        "position": {
+          "x": 9.5,
+          "y": 0.02,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "titan",
+        "name": "土卫六",
+        "position": {
+          "x": 9.5008,
+          "y": 0,
+          "z": 0.0008
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      }
+    ],
+    "totalDuration": 210,
+    "recommendedTime": "任意时间",
+    "featured": true
+  },
+  {
+    "id": "cruise-red-planet",
+    "name": "红色星球",
+    "description": "探索火星表面的峡谷和火山",
+    "waypoints": [
+      {
+        "bodyId": "mars",
+        "name": "火星轨道",
+        "position": {
+          "x": 1.52,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "mars-surface",
+        "name": "火星表面",
+        "position": {
+          "x": 1.52,
+          "y": 0.00003,
+          "z": 0
+        },
+        "duration": 120,
+        "pauseDuration": 40
+      }
+    ],
+    "totalDuration": 190,
+    "recommendedTime": "白天",
+    "featured": true
+  },
+  {
+    "id": "cruise-gas-giants",
+    "name": "气态巨行星",
+    "description": "探访木星和土星的壮丽风暴",
+    "waypoints": [
+      {
+        "bodyId": "jupiter",
+        "name": "木星",
+        "position": {
+          "x": 5.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      },
+      {
+        "bodyId": "jupiter-great-red-spot",
+        "name": "大红斑",
+        "position": {
+          "x": 5.2,
+          "y": 0.00007,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "saturn",
+        "name": "土星",
+        "position": {
+          "x": 9.5,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 265,
+    "recommendedTime": "夜晚",
+    "featured": true
+  },
+  {
+    "id": "cruise-asteroid-belt",
+    "name": "小行星带",
+    "description": "穿越火星和木星之间的小行星区域",
+    "waypoints": [
+      {
+        "bodyId": "mars",
+        "name": "火星",
+        "position": {
+          "x": 1.52,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "asteroid-belt-inner",
+        "name": "小行星带内侧",
+        "position": {
+          "x": 2.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "asteroid-belt-outer",
+        "name": "小行星带外侧",
+        "position": {
+          "x": 2.8,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "jupiter",
+        "name": "木星",
+        "position": {
+          "x": 5.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 10
+      }
+    ],
+    "totalDuration": 225,
+    "recommendedTime": "任意时间",
+    "featured": false
+  },
+  {
+    "id": "cruise-ganymede",
+    "name": "木卫四之旅",
+    "description": "探访太阳系最大的卫星木卫四",
+    "waypoints": [
+      {
+        "bodyId": "jupiter",
+        "name": "木星",
+        "position": {
+          "x": 5.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "ganymede",
+        "name": "木卫四",
+        "position": {
+          "x": 5.20015,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 145,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-europa",
+    "name": "欧罗巴冰世界",
+    "description": "探索木卫二的冰层和地下海洋",
+    "waypoints": [
+      {
+        "bodyId": "jupiter",
+        "name": "木星",
+        "position": {
+          "x": 5.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "europa",
+        "name": "木卫二",
+        "position": {
+          "x": 5.200067,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 145,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-titan",
+    "name": "泰坦迷雾",
+    "description": "探索土卫六的甲烷湖泊",
+    "waypoints": [
+      {
+        "bodyId": "saturn",
+        "name": "土星",
+        "position": {
+          "x": 9.5,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "titan",
+        "name": "土卫六",
+        "position": {
+          "x": 9.5008,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 145,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-outer-planets",
+    "name": "远日行星",
+    "description": "探访天王星和海王星的冰巨星世界",
+    "waypoints": [
+      {
+        "bodyId": "saturn",
+        "name": "土星",
+        "position": {
+          "x": 9.5,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "uranus",
+        "name": "天王星",
+        "position": {
+          "x": 19.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "neptune",
+        "name": "海王星",
+        "position": {
+          "x": 30.1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 20
+      }
+    ],
+    "totalDuration": 235,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-venus-express",
+    "name": "金星快车",
+    "description": "近距离观察金星浓厚的大气层",
+    "waypoints": [
+      {
+        "bodyId": "earth",
+        "name": "地球",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "venus",
+        "name": "金星",
+        "position": {
+          "x": 0.72,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 145,
+    "recommendedTime": "白天",
+    "featured": false
+  },
+  {
+    "id": "cruise-mercury-flyby",
+    "name": "水星飞掠",
+    "description": "探访离太阳最近的行星",
+    "waypoints": [
+      {
+        "bodyId": "sun",
+        "name": "太阳",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "mercury",
+        "name": "水星",
+        "position": {
+          "x": 0.39,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      }
+    ],
+    "totalDuration": 110,
+    "recommendedTime": "白天",
+    "featured": false
+  },
+  {
+    "id": "cruise-earth-moon-system",
+    "name": "地月系统",
+    "description": "欣赏地球和月球的美丽舞姿",
+    "waypoints": [
+      {
+        "bodyId": "earth",
+        "name": "地球",
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "moon",
+        "name": "月球",
+        "position": {
+          "x": 1.00257,
+          "y": 0,
+          "z": 0.00257
+        },
+        "duration": 60,
+        "pauseDuration": 20
+      },
+      {
+        "bodyId": "earth-moon-lagrange",
+        "name": "拉格朗日点",
+        "position": {
+          "x": 1.005,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      }
+    ],
+    "totalDuration": 210,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-sun-corona",
+    "name": "日冕探秘",
+    "description": "近距离观察太阳的日冕层",
+    "waypoints": [
+      {
+        "bodyId": "sun",
+        "name": "太阳",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 30
+      }
+    ],
+    "totalDuration": 120,
+    "recommendedTime": "日食期间",
+    "featured": false
+  },
+  {
+    "id": "cruise-kuiper-belt",
+    "name": "柯伊伯带",
+    "description": "探访太阳系边缘的神秘区域",
+    "waypoints": [
+      {
+        "bodyId": "neptune",
+        "name": "海王星",
+        "position": {
+          "x": 30.1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "kuiper-belt-inner",
+        "name": "柯伊伯带内侧",
+        "position": {
+          "x": 35,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "kuiper-belt-outer",
+        "name": "柯伊伯带外侧",
+        "position": {
+          "x": 45,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 60,
+        "pauseDuration": 15
+      }
+    ],
+    "totalDuration": 165,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-pluto",
+    "name": "冥王星之旅",
+    "description": "探访曾经的第九大行星",
+    "waypoints": [
+      {
+        "bodyId": "neptune",
+        "name": "海王星",
+        "position": {
+          "x": 30.1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "pluto",
+        "name": "冥王星",
+        "position": {
+          "x": 39.5,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 145,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-io",
+    "name": "木卫一炼狱",
+    "description": "探索太阳系最活跃的火山卫星",
+    "waypoints": [
+      {
+        "bodyId": "jupiter",
+        "name": "木星",
+        "position": {
+          "x": 5.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "io",
+        "name": "木卫一",
+        "position": {
+          "x": 5.200042,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 145,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-callisto",
+    "name": "木卫四遗迹",
+    "description": "探访木卫四布满陨石坑的表面",
+    "waypoints": [
+      {
+        "bodyId": "jupiter",
+        "name": "木星",
+        "position": {
+          "x": 5.2,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "callisto",
+        "name": "木卫四",
+        "position": {
+          "x": 5.200188,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 145,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-triton",
+    "name": "海卫一秘境",
+    "description": "探索海王星最大的卫星",
+    "waypoints": [
+      {
+        "bodyId": "neptune",
+        "name": "海王星",
+        "position": {
+          "x": 30.1,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "triton",
+        "name": "海卫一",
+        "position": {
+          "x": 30.100035,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 90,
+        "pauseDuration": 25
+      }
+    ],
+    "totalDuration": 145,
+    "recommendedTime": "夜晚",
+    "featured": false
+  },
+  {
+    "id": "cruise-saturn-moons",
+    "name": "土星卫星群",
+    "description": "探访土星的众多卫星",
+    "waypoints": [
+      {
+        "bodyId": "saturn",
+        "name": "土星",
+        "position": {
+          "x": 9.5,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 30,
+        "pauseDuration": 5
+      },
+      {
+        "bodyId": "titan",
+        "name": "土卫六",
+        "position": {
+          "x": 9.5008,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 45,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "enceladus",
+        "name": "土卫二",
+        "position": {
+          "x": 9.500023,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 45,
+        "pauseDuration": 15
+      },
+      {
+        "bodyId": "rhea",
+        "name": "土卫五",
+        "position": {
+          "x": 9.500053,
+          "y": 0,
+          "z": 0
+        },
+        "duration": 45,
+        "pauseDuration": 15
+      }
+    ],
+    "totalDuration": 195,
+    "recommendedTime": "夜晚",
+    "featured": false
+  }
+]

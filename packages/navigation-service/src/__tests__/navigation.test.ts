@@ -189,6 +189,27 @@ describe('E-11 拼音搜索修复', () => {
     expect(ids).toContain(599);
   });
 
+  it('搜索拼音首字母 "dq" 命中 "地球"（FR-NAV-002）', () => {
+    const results = svc.search('dq');
+    const ids = results.map((r) => r.bodyId);
+    expect(ids).toContain(399);
+    const earthResult = results.find((r) => r.bodyId === 399);
+    expect(earthResult).toBeDefined();
+    expect(earthResult!.matchType).toBe('pinyin');
+  });
+
+  it('搜索拼音首字母 "hx" 命中 "火星"（FR-NAV-002）', () => {
+    const results = svc.search('hx');
+    const ids = results.map((r) => r.bodyId);
+    expect(ids).toContain(499);
+  });
+
+  it('搜索拼音首字母 "twx" 命中 "天王星"（FR-NAV-002）', () => {
+    const results = svc.search('twx');
+    const ids = results.map((r) => r.bodyId);
+    expect(ids).toContain(799);
+  });
+
   it('搜索 "木星"（中文）命中', () => {
     const results = svc.search('木星');
     expect(results.length).toBeGreaterThan(0);

@@ -55,6 +55,14 @@ export type {
   WorkerErrorListener,
 } from './astro-core-client.js';
 
+export {
+  parseSsph,
+  parseSsphToJson,
+  serializeBodyEphemerisToJson,
+  SsphParseError,
+} from './ssph-parser.js';
+export type { SsphSegment, SsphBodyEphemeris } from './ssph-parser.js';
+
 import type {
   ReferenceFrame,
   Precision,

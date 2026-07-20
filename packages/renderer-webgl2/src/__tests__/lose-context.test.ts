@@ -51,6 +51,10 @@ function createMockCanvasAndGl() {
     deleteProgram: (p: unknown) => {
       deletedPrograms.push(p);
     },
+    // VAO 方法（SwiftShader 要求显式 VAO，setupDefaultState 会创建/绑定默认 VAO）
+    createVertexArray: vi.fn(() => ({})),
+    bindVertexArray: vi.fn(),
+    deleteVertexArray: vi.fn(),
     DEPTH_TEST: 2929,
     LEQUAL: 515,
     MAX_TEXTURE_SIZE: 3379,

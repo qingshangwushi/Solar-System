@@ -462,11 +462,13 @@ export class SphereGeometry implements Geometry {
     this.vertexBuffer = renderer.createBuffer({
       size: vertexArrayBuffer.byteLength,
       usage: 'static',
+      target: 'vertex',
       data: vertexArrayBuffer,
     });
     this.indexBuffer = renderer.createBuffer({
       size: indexArrayBuffer.byteLength,
       usage: 'static',
+      target: 'index',
       data: indexArrayBuffer,
     });
   }

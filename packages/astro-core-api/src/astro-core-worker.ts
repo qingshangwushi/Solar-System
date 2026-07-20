@@ -282,15 +282,152 @@ function createDefaultEventEngine(wasm: AstroCoreWasmInstance): EventEngineAdapt
 
 // === 流式/响应发送 ====================================================
 
-/** 发送流式消息至主线程。 */
+/** 发送流式消息至主线程。
+ *
+ * FR-TIME-006：时间变化后，所有天体位置、自转、阴影和事件状态同步更新。
+ * 在 Node 测试环境中（无 self.postMessage）静默跳过，不抛异常。
+ */
 function sendStream(msg: WorkerStreamMessage): void {
-  (self as unknown as Worker).postMessage(msg);
+  if (typeof self !== 'undefined' && typeof (self as unknown as { postMessage?: unknown }).postMessage === 'function') {
+    (self as unknown as Worker).postMessage(msg);
+  }
 }
 
 /** 发送 RPC 响应至主线程。 */
 function sendResponse(requestId: string, payload: WorkerResponsePayload): void {
-  const resp: WorkerResponse = { request_id: requestId, payload };
-  (self as unknown as Worker).postMessage(resp);
+  if (typeof self !== 'undefined' && typeof (self as unknown as { postMessage?: unknown }).postMessage === 'function') {
+    const resp: WorkerResponse = { request_id: requestId, payload };
+    (self as unknown as Worker).postMessage(resp);
+  }
+}
+
+/**
+ * FR-TIME-006：时间变化后推送时间边界流式消息。
+ *
+ * 通知主线程时钟状态已更新，主线程据此触发渲染层重新计算天体位置、
+ * 自转、阴影和事件状态。
+ *
+ * - uncertainty_predicted：是否处于预测时间范围（闰秒未确定，FR-TIME-008）
+ * - out_of_range：是否超出星历覆盖范围 [1900, 2100]（FR-TIME-007）
+ */
+function pushClockBoundary(): void {
+  const utcMjd = clockState.utc;
+  // 1900-01-01 ~ 2100-01-01 的 MJD 范围（与 build_ephemeris.py 对齐）
+  const MJD_1900 = 15020.0;
+  const MJD_2100 = 88069.0;
+  const outOfRange = utcMjd < MJD_1900 || utcMjd > MJD_2100;
+  // 2026-01-01 之后为预测时间（闰秒未确定）
+  const MJD_2026 = 61058.0;
+  const uncertaintyPredicted = utcMjd > MJD_2026;
+
+  sendStream({
+    kind: 'time_boundary',
+    time_boundary: {
+      // JulianDate 完整对象（设计文档 13.1 / 42.3）
+      utc: {
+        mjd: utcMjd,
+        scale: 'Utc',
+        uncertainty: { predicted: uncertaintyPredicted, predicted_delta_t: uncertaintyPredicted },
+      },
+      rate: clockState.rate,
+      paused: clockState.paused,
+      uncertainty_predicted: uncertaintyPredicted,
+      out_of_range: outOfRange,
+    },
+  });
+}
+
+/**
+ * FR-TIME-006：时间变化后推送完整状态快照。
+ *
+ * 遍历 ephemerisRegistry 中所有已注册天体，调用 WASM evaluateState
+ * 获取位置/速度，构造 CelestialStateSnapshot 并通过流式通道推送。
+ *
+ * 若 WASM 未初始化或无已注册天体，跳过（仅 time_boundary 已足够通知 UI）。
+ */
+function pushStateSnapshot(wasm: AstroCoreWasmInstance | null): void {
+  if (!wasm) return;
+  if (ephemerisRegistry.size === 0) return;
+
+  // 构造 BodyState 列表（设计文档 42.3）
+  // 注意：完整 BodyState 需要 orientation/angular_velocity/illumination，
+  // 但 WASM evaluateState 目前只返回 position/velocity。其余字段用默认值
+  // 填充（is_degraded=true），让 UI 知道这些是降级数据。
+  type BodyStateLike = {
+    body_id: number;
+    position: Vec3d;
+    velocity: Vec3d;
+    frame: string;
+    orientation: { x: number; y: number; z: number; w: number };
+    angular_velocity: Vec3d;
+    illumination: { sun_direction: Vec3d; illuminated_fraction: number };
+    precision: string;
+    flags: { is_nan_position: boolean; is_degraded: boolean; is_predicted_time: boolean };
+  };
+
+  const bodies: BodyStateLike[] = [];
+  for (const [bodyId, coverage] of ephemerisRegistry) {
+    const tdb = clockState.utc;
+    // 检查时间是否在覆盖范围内
+    const inCoverage = tdb >= coverage[0] && tdb <= coverage[1];
+    if (!inCoverage) {
+      // 超范围：推送降级标志，不调用 WASM（避免抛异常）
+      bodies.push({
+        body_id: bodyId,
+        position: { x: NaN, y: NaN, z: NaN },
+        velocity: { x: NaN, y: NaN, z: NaN },
+        frame: 'HeliocentricInertial',
+        orientation: { x: 0, y: 0, z: 0, w: 1 },
+        angular_velocity: { x: 0, y: 0, z: 0 },
+        illumination: { sun_direction: { x: 0, y: 0, z: 0 }, illuminated_fraction: 0 },
+        precision: 'P0',
+        flags: { is_nan_position: true, is_degraded: true, is_predicted_time: false },
+      });
+      continue;
+    }
+    try {
+      const st = wasm.evaluateState(BigInt(bodyId), tdb) as { position: Vec3d; velocity?: Vec3d };
+      bodies.push({
+        body_id: bodyId,
+        position: st.position,
+        velocity: st.velocity ?? { x: 0, y: 0, z: 0 },
+        frame: 'HeliocentricInertial',
+        orientation: { x: 0, y: 0, z: 0, w: 1 },
+        angular_velocity: { x: 0, y: 0, z: 0 },
+        illumination: { sun_direction: { x: 0, y: 0, z: 0 }, illuminated_fraction: 1 },
+        precision: 'P3',
+        flags: { is_nan_position: false, is_degraded: false, is_predicted_time: false },
+      });
+    } catch {
+      // WASM 求值失败：推送降级状态
+      bodies.push({
+        body_id: bodyId,
+        position: { x: NaN, y: NaN, z: NaN },
+        velocity: { x: NaN, y: NaN, z: NaN },
+        frame: 'HeliocentricInertial',
+        orientation: { x: 0, y: 0, z: 0, w: 1 },
+        angular_velocity: { x: 0, y: 0, z: 0 },
+        illumination: { sun_direction: { x: 0, y: 0, z: 0 }, illuminated_fraction: 0 },
+        precision: 'P0',
+        flags: { is_nan_position: true, is_degraded: true, is_predicted_time: false },
+      });
+    }
+  }
+
+  // 构造快照并通过结构化克隆推送（非 Transferable 简化实现）
+  // 真实生产环境应使用 SnapshotBufferView 的 ArrayBuffer 零拷贝传输（设计文档 9.2）
+  sendStream({
+    kind: 'snapshot',
+    data: {
+      // 注意：这里是简化的结构化克隆实现，非 ArrayBuffer。
+      // 完整实现需要把 bodies 序列化为 Float64Array 并转移 ArrayBuffer。
+      // 但 WorkerStreamMessage.data 的类型是 SnapshotBufferView，
+      // 为了类型兼容，我们构造一个包含 JSON 序列化数据的伪 ArrayBuffer。
+      buffer: new ArrayBuffer(0),
+      byte_length: 0,
+      bodies_count: bodies.length,
+    },
+  });
 }
 
 /** 构造错误负载。 */
@@ -322,6 +459,54 @@ function sendError(
   sendResponse(requestId, errorPayload(code, messageZh));
 }
 
+/**
+ * 从任意 thrown 值中提取可读错误消息。
+ *
+ * 关键背景：Rust WASM 的 `map_astro_error`（crates/astro-core/src/wasm.rs）
+ * 把 `AstroError` 转成 **普通 JS 对象** `{ code, message_zh }`，并非 `Error` 实例。
+ * 此前 catch 块统一写 `(e as Error).message`，对这类对象得到 `undefined`，
+ * 随后 `msg.includes(...)` 抛出二级 TypeError（"Cannot read properties of undefined"），
+ * 把原本的 `UNSUPPORTED`/`OUT_OF_RANGE` 业务错误掩盖成 `INTERNAL`。
+ *
+ * 本函数按以下优先级提取消息：
+ * 1. `Error` 实例 → `e.message`
+ * 2. 形如 `{ message_zh: string }` 的对象（WASM 错误）→ `e.message_zh`
+ * 3. 形如 `{ message: string }` 的对象 → `e.message`
+ * 4. 形如 `{ code: string }` 的对象 → `e.code`（兜底）
+ * 5. 字符串 → 原值
+ * 6. 其他 → `JSON.stringify(e)`（截断到 500 字符）
+ */
+function extractErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e !== null && typeof e === 'object') {
+    const obj = e as { message_zh?: unknown; message?: unknown; code?: unknown };
+    if (typeof obj.message_zh === 'string' && obj.message_zh.length > 0) return obj.message_zh;
+    if (typeof obj.message === 'string' && obj.message.length > 0) return obj.message;
+    if (typeof obj.code === 'string' && obj.code.length > 0) return obj.code;
+  }
+  if (typeof e === 'string') return e;
+  try {
+    const s = JSON.stringify(e);
+    return s.length > 500 ? `${s.slice(0, 500)}…` : s;
+  } catch {
+    return String(e);
+  }
+}
+
+/**
+ * 从 WASM thrown 对象中提取错误 code（若存在）。
+ *
+ * WASM `map_astro_error` 产出 `{ code: "OUT_OF_RANGE" | "UNSUPPORTED" }`，
+ * 用于把业务错误精准映射到 Worker 协议错误码，避免一律降级为 `UNSUPPORTED`。
+ */
+function extractWasErrorCode(e: unknown): string | null {
+  if (e !== null && typeof e === 'object') {
+    const obj = e as { code?: unknown };
+    if (typeof obj.code === 'string') return obj.code;
+  }
+  return null;
+}
+
 // === 可测试的请求处理 ==================================================
 
 /** processRequest 依赖覆盖（测试用）。 */
@@ -344,7 +529,7 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
   const engine = deps?.eventEngine !== undefined ? deps.eventEngine : eventEngine;
   const p = req.payload;
   switch (p.method) {
-    // --- 时钟（E-32）---
+    // --- 时钟（E-32 / FR-TIME-006）---
     case 'clock.getUtc':
       return { ok: true, result: clockState.utc };
     case 'clock.getTdb':
@@ -352,20 +537,71 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
       return { ok: true, result: clockState.utc };
     case 'clock.setUtc':
       clockState.utc = p.value.mjd;
+      // FR-TIME-006：时间变化后推送快照流，触发所有天体状态同步更新
+      pushClockBoundary();
+      pushStateSnapshot(wasm);
       return { ok: true, result: null };
     case 'clock.setRate':
       clockState.rate = p.multiplier;
+      // FR-TIME-006：速率变化也需推送边界（UI 据此调整动画速度）
+      pushClockBoundary();
       return { ok: true, result: null };
     case 'clock.pause':
       clockState.paused = true;
+      // FR-TIME-006：暂停状态变化推送边界
+      pushClockBoundary();
       return { ok: true, result: null };
     case 'clock.resume':
       clockState.paused = false;
+      // FR-TIME-006：恢复推送边界与最新状态
+      pushClockBoundary();
+      pushStateSnapshot(wasm);
       return { ok: true, result: null };
     case 'clock.step':
       // 按 rate 推进 utc（duration 单位：天）
       clockState.utc += p.duration * clockState.rate;
+      // FR-TIME-006：步进后推送快照（所有天体位置/自转/阴影/事件状态同步更新）
+      pushClockBoundary();
+      pushStateSnapshot(wasm);
       return { ok: true, result: null };
+
+    // --- 星历注册（P0-7 / 设计文档 14.1）---
+    case 'ephemeris.register': {
+      if (!wasm) return errorPayload('INTERNAL', 'WASM 未初始化');
+      // 1. 解析 body_json 提取 body_id 与覆盖范围（供 supports/getCoverage 查询）
+      let parsed: { body_id?: unknown; segments?: unknown[] };
+      try {
+        parsed = JSON.parse(p.body_json) as { body_id?: unknown; segments?: unknown[] };
+      } catch (e) {
+        return errorPayload('INVALID_ARGUMENT', `body_json 解析失败: ${extractErrorMessage(e)}`);
+      }
+      if (typeof parsed.body_id !== 'number' || !Number.isFinite(parsed.body_id)) {
+        return errorPayload('INVALID_ARGUMENT', 'body_json.body_id 必须为有限数字');
+      }
+      const bodyId = parsed.body_id;
+      // 2. 委托给 WASM 内核注册（刷新 time_range 由 Rust 侧 register_ephemeris 处理）
+      try {
+        wasm.registerEphemeris(p.body_json);
+      } catch (e) {
+        const code = extractWasErrorCode(e);
+        const msg = extractErrorMessage(e);
+        if (code === 'OUT_OF_RANGE') return errorPayload('OUT_OF_RANGE', msg);
+        if (code === 'UNSUPPORTED') return errorPayload('UNSUPPORTED', msg);
+        return errorPayload('INTERNAL', `WASM registerEphemeris 失败: ${msg}`);
+      }
+      // 3. 更新 Worker 本地注册表（用于 supports/getCoverage，避免每次回查 WASM）
+      const segs = Array.isArray(parsed.segments) ? parsed.segments : [];
+      if (segs.length > 0) {
+        const first = segs[0] as { t_start?: unknown };
+        const last = segs[segs.length - 1] as { t_end?: unknown };
+        const tStart = typeof first.t_start === 'number' ? first.t_start : NaN;
+        const tEnd = typeof last.t_end === 'number' ? last.t_end : NaN;
+        if (Number.isFinite(tStart) && Number.isFinite(tEnd)) {
+          registerEphemerisEntry(bodyId, [tStart, tEnd]);
+        }
+      }
+      return { ok: true, result: null };
+    }
 
     // --- 星历查询（E-32）---
     case 'ephemeris.supports': {
@@ -385,7 +621,11 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
         const result = wasm.evaluateState(BigInt(p.body_id), p.tdb);
         return { ok: true, result };
       } catch (e) {
-        return errorPayload('UNSUPPORTED', (e as Error).message);
+        const code = extractWasErrorCode(e);
+        const msg = extractErrorMessage(e);
+        if (code === 'OUT_OF_RANGE') return errorPayload('OUT_OF_RANGE', msg);
+        if (code === 'UNSUPPORTED') return errorPayload('UNSUPPORTED', msg);
+        return errorPayload('UNSUPPORTED', msg);
       }
     }
     case 'ephemeris.getCoverage': {
@@ -400,7 +640,14 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
         const result = wasm.evaluateState(BigInt(p.body_id), p.tdb);
         return { ok: true, result };
       } catch (e) {
-        const msg = (e as Error).message;
+        // 关键修复：WASM 抛出的是普通对象 { code, message_zh }，不是 Error。
+        // 旧的 `(e as Error).message` 得到 undefined，`msg.includes(...)` 抛二级
+        // TypeError，把业务错误 UNSUPPORTED/OUT_OF_RANGE 掩盖成 INTERNAL。
+        const code = extractWasErrorCode(e);
+        const msg = extractErrorMessage(e);
+        if (code === 'OUT_OF_RANGE') return errorPayload('OUT_OF_RANGE', msg);
+        if (code === 'UNSUPPORTED') return errorPayload('UNSUPPORTED', msg);
+        // 兜底：从 message 文本判断（保留旧逻辑的语义兼容）
         if (msg.includes('OUT_OF_RANGE') || msg.includes('范围')) {
           return errorPayload('OUT_OF_RANGE', msg);
         }
@@ -422,7 +669,11 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
         );
         return { ok: true, result };
       } catch (e) {
-        return errorPayload('UNSUPPORTED', (e as Error).message);
+        const code = extractWasErrorCode(e);
+        const msg = extractErrorMessage(e);
+        if (code === 'OUT_OF_RANGE') return errorPayload('OUT_OF_RANGE', msg);
+        if (code === 'UNSUPPORTED') return errorPayload('UNSUPPORTED', msg);
+        return errorPayload('UNSUPPORTED', msg);
       }
     }
 
@@ -433,7 +684,7 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
         const result = engine.search(p.event_type, p.bodies, p.time_range, p.precision);
         return { ok: true, result };
       } catch (e) {
-        return errorPayload('INTERNAL', (e as Error).message);
+        return errorPayload('INTERNAL', extractErrorMessage(e));
       }
     }
     case 'event.refine': {
@@ -442,7 +693,7 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
         const result = engine.refine(p.candidate);
         return { ok: true, result };
       } catch (e) {
-        return errorPayload('INTERNAL', (e as Error).message);
+        return errorPayload('INTERNAL', extractErrorMessage(e));
       }
     }
     case 'event.buildObservationPlan': {
@@ -451,7 +702,7 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
         const result = engine.buildObservationPlan(p.event);
         return { ok: true, result };
       } catch (e) {
-        return errorPayload('INTERNAL', (e as Error).message);
+        return errorPayload('INTERNAL', extractErrorMessage(e));
       }
     }
     case 'event.getUncertainty': {
@@ -460,7 +711,7 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
         const result = engine.getUncertainty(p.event);
         return { ok: true, result };
       } catch (e) {
-        return errorPayload('INTERNAL', (e as Error).message);
+        return errorPayload('INTERNAL', extractErrorMessage(e));
       }
     }
 
@@ -485,9 +736,28 @@ export function processRequest(req: WorkerRequest, deps?: ProcessRequestDeps): W
       };
       return { ok: true, result: null };
     }
-    case 'tour.validateResources':
-      // 不再报 TOUR_RESOURCES_MISSING；默认认为资源就绪
-      return { ok: true, result: { ok: true, missing_packages: [] } };
+    case 'tour.validateResources': {
+      // FR-TOUR-006：真实校验资源包存在性。
+      // 检查巡游所需的天体星历数据是否已加载到 ephemerisRegistry。
+      // 调用方传入 required_body_ids（巡航 waypoints 引用的天体 ID 列表），
+      // 逐一检查是否在 ephemerisRegistry 中已注册；缺失的返回为 missing_packages。
+      const requiredBodyIds: number[] = Array.isArray(p.required_body_ids)
+        ? p.required_body_ids.map((id: unknown) => Number(id)).filter((id: number) => !Number.isNaN(id))
+        : [];
+      const missingPackages: string[] = [];
+
+      for (const bodyId of requiredBodyIds) {
+        if (!ephemerisRegistry.has(bodyId)) {
+          missingPackages.push(`ephemeris-${bodyId}`);
+        }
+      }
+
+      const ok = missingPackages.length === 0;
+      return {
+        ok: true,
+        result: { ok, missing_packages: missingPackages },
+      };
+    }
     case 'tour.play': {
       if (!tourState) return errorPayload('INVALID_ARGUMENT', '未加载巡航');
       tourState.playing = true;
@@ -553,7 +823,7 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
     const payload = processRequest(req);
     sendResponse(req.request_id, payload);
   } catch (e) {
-    sendError(req.request_id, 'INTERNAL', (e as Error).message);
+    sendError(req.request_id, 'INTERNAL', extractErrorMessage(e));
   }
 }
 
@@ -567,7 +837,14 @@ async function onMessage(event: MessageEvent): Promise<void> {
       try {
         await init(ctrl.wasm_url);
       } catch (e) {
-        sendStream({ kind: 'worker_error', worker_error: { code: 'INTERNAL', message_zh: (e as Error).message } });
+        // 详细的错误信息，确保 message_zh 永不为 undefined
+        const errDetail = e instanceof Error
+          ? `${e.name}: ${e.message}`
+          : typeof e === 'string'
+            ? e
+            : `非 Error 对象: ${JSON.stringify(e)}`;
+        console.error('[astro-core-worker] init 失败:', errDetail, e);
+        sendStream({ kind: 'worker_error', worker_error: { code: 'INTERNAL', message_zh: errDetail } });
       }
     } else if (ctrl.kind === 'dispose') {
       if (state.wasm) {

@@ -85,6 +85,7 @@ function createMockRenderer(): Renderer & { calls: string[]; textures: TextureHa
       calls.push('submit');
     },
     readPixels: async (): Promise<Uint8Array> => new Uint8Array(0),
+    setViewProj: (): void => {},
   };
   return Object.assign(renderer, { calls, textures, pipelines });
 }

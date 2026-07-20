@@ -61,6 +61,37 @@ const defaultCancelAnimationFrame: CancelAnimationFrameLike = (handle) => {
   clearTimeout(handle);
 };
 
+/**
+ * 探索状态快照（FR-TOUR-005）。
+ *
+ * 进入巡航前保存的自由探索状态，退出巡航时恢复。
+ */
+export interface ExplorationSnapshot {
+  /** 相机位置。 */
+  cameraPosition: { x: number; y: number; z: number } | null;
+  /** 相机目标点。 */
+  cameraTarget: { x: number; y: number; z: number } | null;
+  /** 模拟时间（MJD）。 */
+  simulationTime: number | null;
+  /** 时间倍率。 */
+  timeRate: number | null;
+  /** 时间是否暂停。 */
+  timePaused: boolean | null;
+  /** 尺度模式。 */
+  scaleMode: 'real' | 'enhanced' | null;
+}
+
+/**
+ * 探索状态捕获/恢复接口（FR-TOUR-005）。
+ *
+ * 由外部（如 AppOrchestrator）实现，TourPlayer 在进入巡航前调用 capture()
+ * 保存当前探索状态，退出巡航时调用 restore() 恢复。
+ */
+export interface ExplorationStateProvider {
+  capture(): ExplorationSnapshot;
+  restore(snapshot: ExplorationSnapshot): void;
+}
+
 export interface TourPlayer {
   load(cruiseId: string): void;
   play(): void;
@@ -73,6 +104,10 @@ export interface TourPlayer {
   getCurrentWaypoint(): CruiseWaypoint | null;
   getCurrentWaypointIndex(): number;
   getProgress(): number;
+  /** FR-TOUR-005：设置探索状态捕获/恢复提供者。 */
+  setExplorationStateProvider?(provider: ExplorationStateProvider | null): void;
+  /** FR-TOUR-005：获取进入巡航前保存的探索状态快照。 */
+  getExplorationSnapshot?(): ExplorationSnapshot | null;
 }
 
 export class TourPlayerImpl implements TourPlayer {
@@ -84,6 +119,10 @@ export class TourPlayerImpl implements TourPlayer {
   private currentCruise: Cruise | null = null;
   private rafHandle: number | null = null;
   private lastTimestamp: number | null = null;
+  /** FR-TOUR-005：探索状态捕获/恢复提供者。 */
+  private explorationProvider: ExplorationStateProvider | null = null;
+  /** FR-TOUR-005：进入巡航前保存的探索状态快照。 */
+  private explorationSnapshot: ExplorationSnapshot | null = null;
 
   constructor(cruiseService?: TourPlayerCruiseService, options?: TourPlayerOptions) {
     this.cruiseService =
@@ -92,11 +131,25 @@ export class TourPlayerImpl implements TourPlayer {
     this.caf = options?.cancelAnimationFrame ?? defaultCancelAnimationFrame;
   }
 
+  /** FR-TOUR-005：设置探索状态捕获/恢复提供者。 */
+  setExplorationStateProvider(provider: ExplorationStateProvider | null): void {
+    this.explorationProvider = provider;
+  }
+
+  /** FR-TOUR-005：获取进入巡航前保存的探索状态快照。 */
+  getExplorationSnapshot(): ExplorationSnapshot | null {
+    return this.explorationSnapshot;
+  }
+
   /** 加载指定 ID 的巡游并暂停在起点。 */
   load(cruiseId: string): void {
     const cruise = this.cruiseService.getCruise(cruiseId);
     if (!cruise) {
       throw new Error(`Cruise not found: ${cruiseId}`);
+    }
+    // FR-TOUR-005：进入巡航前保存当前探索状态
+    if (this.explorationProvider && this.state === 'idle') {
+      this.explorationSnapshot = this.explorationProvider.capture();
     }
     this.stopLoop();
     this.currentCruise = cruise;
@@ -163,12 +216,23 @@ export class TourPlayerImpl implements TourPlayer {
     }
   }
 
-  /** 退出巡游，清理资源。 */
+  /**
+   * 退出巡游，清理资源（FR-TOUR-005）。
+   *
+   * 退出时恢复进入巡航前的自由探索状态（相机/时间/尺度），
+   * 使退出后回到合理的自由探索状态，而非空白或巡航结束位置。
+   */
   exit(): void {
     this.stopLoop();
     this.cruiseService.stopCruise();
     this.currentCruise = null;
     this.state = 'idle';
+
+    // FR-TOUR-005：恢复进入巡航前的探索状态
+    if (this.explorationProvider && this.explorationSnapshot) {
+      this.explorationProvider.restore(this.explorationSnapshot);
+      this.explorationSnapshot = null;
+    }
   }
 
   getState(): TourPlayerState {

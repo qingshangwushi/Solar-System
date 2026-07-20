@@ -55,10 +55,23 @@ export async function loadAstroCoreWasm(moduleUrl?: string): Promise<LoadedAstro
 
   loadingPromise = (async () => {
     const url = moduleUrl ?? new URL('../pkg/astro_core.js', import.meta.url).href;
-    const mod = (await import(/* @vite-ignore */ url)) as WasmModule;
-    await mod.default();
+    console.log('[astro-core-wasm] Loading WASM from:', url);
+    let mod: WasmModule;
+    try {
+      mod = (await import(/* @vite-ignore */ url)) as WasmModule;
+    } catch (e) {
+      console.error('[astro-core-wasm] Dynamic import failed:', e);
+      throw e;
+    }
+    try {
+      await mod.default();
+    } catch (e) {
+      console.error('[astro-core-wasm] mod.default() (WASM instantiation) failed:', e);
+      throw e;
+    }
     const loaded: LoadedAstroCoreWasm = { AstroCoreWasm: mod.AstroCoreWasm };
     cachedModule = loaded;
+    console.log('[astro-core-wasm] WASM loaded successfully');
     return loaded;
   })();
 

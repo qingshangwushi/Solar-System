@@ -88,9 +88,22 @@ export class AstroCoreClient {
 
   /** 创建 Worker 实例。 */
   private spawnWorker(): void {
-    const workerUrl =
-      this.options.workerUrl ?? new URL('./astro-core-worker.js', import.meta.url);
-    this.worker = new Worker(workerUrl, { type: 'module' });
+    // 关键：`new Worker(new URL('./astro-core-worker.ts', import.meta.url), { type: 'module' })`
+    // 必须内联写在 `new Worker()` 调用里，Vite 才能识别为 worker 入口并自动打包为独立 chunk
+    // （剥离 TypeScript 语法、解析 bare module specifier、inline 依赖）。
+    // 之前把 `new URL(...)` 通过 `??` 赋值给变量再传入 `new Worker()`，Vite 静态分析
+    // 无法识别为 worker 模式，仅当作普通 URL 资源引用原样拷贝 .ts 文件，导致浏览器
+    // 无法在 Worker 中加载（含 `import type`/`export interface`/`@solar-system/*` 等无法解析的语法）。
+    if (this.options.workerUrl) {
+      // 测试或自定义 worker URL（不经过 Vite 打包）
+      this.worker = new Worker(this.options.workerUrl, { type: 'module' });
+    } else {
+      // 默认 worker —— Vite 识别此模式并打包为 ES 模块 chunk
+      this.worker = new Worker(
+        new URL('./astro-core-worker.ts', import.meta.url),
+        { type: 'module' },
+      );
+    }
     this.worker.addEventListener('message', (e: MessageEvent) => {
       this.handleMessage(e.data as WorkerOutbound);
     });
@@ -213,6 +226,20 @@ export class AstroCoreClient {
     return resp.payload.result;
   }
 
+  /**
+   * 注册一段星历到 WASM 内核（设计文档 14.1、P0-7）。
+   *
+   * 主线程在 `phaseResourceLoad` 阶段从 `ephemeris-<bodyId>.bin` 读取 SSPH 二进制，
+   * 通过 `parseSsphToJson(buffer, naifBodyId)` 转为 JSON 字符串后调用本方法。
+   * Worker 收到后调用 `wasm.registerEphemeris(bodyJson)` 并刷新 `ephemerisRegistry`。
+   *
+   * @param bodyJson serde 序列化的 `BodyEphemeris` JSON 字符串
+   */
+  async registerEphemeris(bodyJson: string): Promise<void> {
+    const resp = await this.rpc({ method: 'ephemeris.register', body_json: bodyJson });
+    if (!resp.payload.ok) throw new Error(resp.payload.error.message_zh);
+  }
+
   /** 求值多天体快照（设计文档 42.3）。 */
   async evaluateSnapshot(bodyIds: number[], utcMjd: number): Promise<unknown> {
     // 逐个求值并聚合（WASM evaluateSnapshot 接收 BigUint64Array，此处逐个简化）
@@ -273,6 +300,46 @@ export class AstroCoreClient {
   subscribeTimeBoundary(listener: TimeBoundaryListener): () => void {
     this.timeBoundaryListeners.add(listener);
     return () => this.timeBoundaryListeners.delete(listener);
+  }
+
+  // ---------------------------------------------------------------------
+  // 时钟控制（FR-TIME-001/002/003；对应 Worker 时钟状态机）
+  // ---------------------------------------------------------------------
+
+  /** 设置模拟时间（UTC MJD）。 */
+  async clockSetUtc(mjd: number): Promise<void> {
+    const resp = await this.rpc({
+      method: 'clock.setUtc',
+      value: { mjd, scale: 'Utc', uncertainty: { predicted: false, predicted_delta_t: false } },
+    });
+    if (!resp.payload.ok) throw new Error(resp.payload.error.message_zh);
+  }
+
+  /** 设置时间倍率（可为负数表示倒流）。 */
+  async clockSetRate(multiplier: number): Promise<void> {
+    const resp = await this.rpc({ method: 'clock.setRate', multiplier });
+    if (!resp.payload.ok) throw new Error(resp.payload.error.message_zh);
+  }
+
+  /** 暂停时钟。 */
+  async clockPause(): Promise<void> {
+    const resp = await this.rpc({ method: 'clock.pause' });
+    if (!resp.payload.ok) throw new Error(resp.payload.error.message_zh);
+  }
+
+  /** 恢复时钟。 */
+  async clockResume(): Promise<void> {
+    const resp = await this.rpc({ method: 'clock.resume' });
+    if (!resp.payload.ok) throw new Error(resp.payload.error.message_zh);
+  }
+
+  /** 获取当前 Worker 时钟的 UTC（MJD）。 */
+  async clockGetUtc(): Promise<number> {
+    const resp = await this.rpc({ method: 'clock.getUtc' });
+    if (!resp.payload.ok) throw new Error(resp.payload.error.message_zh);
+    // Worker 端 processRequest 对 clock.getUtc 直接返回 number（clockState.utc）
+    const result = resp.payload.result as unknown;
+    return typeof result === 'number' ? result : (result as { mjd: number }).mjd;
   }
 
   /** 订阅快照。 */

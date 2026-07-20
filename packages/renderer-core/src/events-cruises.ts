@@ -537,6 +537,35 @@ export class CruiseServiceImpl implements CruiseService {
   private callbacks: CruiseCallbacks = {};
   private lastWaypointIndex = -1;
 
+  /**
+   * FR-TOUR-003：从静态 JSON 文件加载巡航配置。
+   *
+   * 巡航配置为静态只读文件（data/cruises/cruises.json），不再硬编码在源码中。
+   * 调用此方法后，cruises 列表替换为 JSON 文件中的配置。
+   *
+   * @param cruiseData 从 JSON 文件解析的 Cruise 数组
+   */
+  loadCruisesFromJson(cruiseData: Cruise[]): void {
+    if (!Array.isArray(cruiseData)) {
+      throw new Error('loadCruisesFromJson: cruiseData 必须是数组');
+    }
+    this.cruises = cruiseData;
+  }
+
+  /**
+   * FR-TOUR-003：异步从 URL 加载巡航配置 JSON。
+   *
+   * @param url 巡航配置 JSON 的 URL（如 /data/cruises/cruises.json）
+   */
+  async loadCruisesFromUrl(url: string): Promise<void> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`加载巡航配置失败: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json() as Cruise[];
+    this.loadCruisesFromJson(data);
+  }
+
   getAllCruises(): Cruise[] {
     return [...this.cruises];
   }

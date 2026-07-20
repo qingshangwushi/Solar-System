@@ -37,6 +37,7 @@ export type WorkerRequestMethod =
   | 'clock.pause'
   | 'clock.resume'
   | 'clock.step'
+  | 'ephemeris.register'
   | 'ephemeris.supports'
   | 'ephemeris.query'
   | 'ephemeris.getCoverage'
@@ -64,6 +65,18 @@ export type WorkerRequestPayload =
   | { method: 'clock.setUtc'; value: JulianDate }
   | { method: 'clock.setRate'; multiplier: number }
   | { method: 'clock.step'; duration: number }
+  | {
+      /**
+       * 注册一段星历到 WASM 内核（设计文档 14.1、P0-7）。
+       *
+       * `body_json` 为 serde 序列化的 `BodyEphemeris` JSON 字符串，
+       * 由主线程通过 `parseSsphToJson(buffer, naifBodyId)` 从 SSPH 二进制产出。
+       * Worker 收到后调用 `wasm.registerEphemeris(body_json)` 并更新
+       * `ephemerisRegistry` 覆盖范围（供 `ephemeris.supports`/`getCoverage` 查询）。
+       */
+      method: 'ephemeris.register';
+      body_json: string;
+    }
   | { method: 'ephemeris.supports'; body_id: number; time_range: [number, number] | null }
   | {
       method: 'ephemeris.query';
@@ -100,6 +113,16 @@ export type WorkerRequestPayload =
   | { method: 'render.setLayerVisibility'; layer: RenderLayer; visible: boolean }
   | { method: 'render.requestCameraTransition'; command: CameraTransitionCommand }
   | { method: 'tour.load'; tour_id: string }
+  | {
+      /**
+       * 巡游资源校验（FR-TOUR-006）。
+       *
+       * 传入巡航所需的天体 body_id 列表，Worker 逐一检查 ephemerisRegistry，
+       * 返回缺失的资源包名（形如 `ephemeris-<body_id>`）。
+       */
+      method: 'tour.validateResources';
+      required_body_ids: number[];
+    }
   | { method: 'tour.seek'; progress: number }
   | {
       method:
@@ -107,7 +130,6 @@ export type WorkerRequestPayload =
         | 'clock.getTdb'
         | 'clock.pause'
         | 'clock.resume'
-        | 'tour.validateResources'
         | 'tour.play'
         | 'tour.pause'
         | 'tour.exit'
@@ -212,6 +234,7 @@ export interface WorkerRpcMap {
   'clock.pause': { result: null };
   'clock.resume': { result: null };
   'clock.step': { result: null };
+  'ephemeris.register': { result: null };
   'ephemeris.supports': { result: boolean };
   'ephemeris.query': {
     result:

@@ -37,6 +37,7 @@ function createMockRenderer(): Renderer & { draw: ReturnType<typeof vi.fn> } {
     endPass: vi.fn(),
     submit: vi.fn(),
     readPixels: vi.fn().mockResolvedValue(new Uint8Array(0)),
+    setViewProj: vi.fn(),
   };
   return renderer as unknown as Renderer & { draw: ReturnType<typeof vi.fn> };
 }

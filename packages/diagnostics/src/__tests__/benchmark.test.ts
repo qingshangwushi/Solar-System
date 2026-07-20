@@ -24,6 +24,8 @@ function createMockWebGL2Context() {
     ARRAY_BUFFER: 34962,
     STATIC_DRAW: 35044,
     TRIANGLES: 4,
+    VERTEX_SHADER: 35633,
+    FRAGMENT_SHADER: 35632,
     createBuffer: () => ({}),
     bindBuffer: (_target: number, _buffer: unknown) => {},
     bufferData: (_target: number, data: Float32Array, _usage: number) => {
@@ -35,6 +37,16 @@ function createMockWebGL2Context() {
     finish: () => {},
     deleteBuffer: (_buffer: unknown) => {},
     getExtension: (_name: string) => ({ loseContext: () => {} }),
+    // Shader/Program mock（benchmark 创建最小化 program 以避免 WebGL 警告）
+    createShader: (_type: number) => ({}),
+    shaderSource: (_shader: unknown, _source: string) => {},
+    compileShader: (_shader: unknown) => {},
+    createProgram: () => ({}),
+    attachShader: (_program: unknown, _shader: unknown) => {},
+    linkProgram: (_program: unknown) => {},
+    useProgram: (_program: unknown) => {},
+    deleteShader: (_shader: unknown) => {},
+    deleteProgram: (_program: unknown) => {},
   };
   return {
     gl: gl as unknown as WebGL2RenderingContext,

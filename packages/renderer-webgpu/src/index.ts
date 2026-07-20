@@ -585,6 +585,24 @@ class WebGpuRenderer implements Renderer {
     this.pendingCommandBuffers = [];
   }
 
+  /**
+   * 设置当前帧的 view-projection 矩阵（列主序 4×4，16 个 float）。
+   *
+   * WebGPU 后端将矩阵写入一个共享 uniform buffer，各 body shader 通过
+   * @group(1) @binding(0) 引用。编排器每帧调用一次。
+   */
+  setViewProj(matrix: ArrayLike<number>): void {
+    // 简化实现：暂存矩阵，供 draw() 时写入 uniform buffer。
+    // WebGPU 在 headless Chromium 不可用，此处仅保证接口合规与类型安全。
+    if (!this.viewProjData) {
+      this.viewProjData = new Float32Array(16);
+    }
+    for (let i = 0; i < 16 && i < matrix.length; i++) {
+      this.viewProjData[i] = matrix[i] as number;
+    }
+  }
+  private viewProjData: Float32Array | null = null;
+
   async readPixels(
     texture: TextureHandle,
     x: number,

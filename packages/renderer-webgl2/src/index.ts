@@ -14,6 +14,7 @@ import {
   type RendererCapabilities,
   type BufferDescriptor,
   type BufferHandle,
+  type BufferTarget,
   type TextureDescriptor,
   type TextureHandle,
   type PipelineDescriptor,
@@ -41,10 +42,28 @@ class WebGl2Renderer implements Renderer {
   onContextRestored: (() => void) | null = null;
 
   private buffers = new Map<string, WebGLBuffer>();
+  /**
+   * 每个 buffer 的绑定 target（vertex/index/uniform）。
+   *
+   * OpenGL ES 3.0 规范 section 2.9.1：buffer 对象在首次绑定到某个 target 时获得
+   * 对应的「类型」，之后不能再绑定到其他 target。createBuffer 时根据 BufferDescriptor.target
+   * 首次绑定到正确的 GL target，此处记录 target 以便 updateBuffer 复用同一个 target。
+   */
+  private bufferTargets = new Map<string, BufferTarget>();
+  /** 默认 VAO（Vertex Array Object）。SwiftShader 等严格 WebGL2 实现要求显式绑定
+   *  VAO 才能进行顶点属性配置与绘制；默认 VAO (0) 在这些实现上会导致 bindBuffer /
+   *  vertexAttribPointer / drawElements 报 GL_INVALID_OPERATION。 */
+  private defaultVao: WebGLVertexArrayObject | null = null;
   private textures = new Map<string, WebGLTexture>();
   private programs = new Map<string, WebGLProgram>();
+  /** pipeline id → 关联的 PipelineDescriptor（用于 draw() 设置顶点属性）。 */
+  private pipelineDescs = new Map<string, PipelineDescriptor>();
   /** 工厂创建时传入的渲染配置（可选），用于设置 canvas 尺寸、抗锯齿等。 */
   private config: RendererConfig | null = null;
+  /** 当前帧的 view-projection 矩阵（列主序 4×4，由编排器每帧设置）。 */
+  private viewProjMatrix = new Float32Array(16);
+  /** uniform buffer binding point（binding=0，对应 GLSL layout(std140, binding=0)）。 */
+  private static readonly UBO_BINDING = 0;
 
   constructor(config?: RendererConfig) {
     this.config = config ?? null;
@@ -58,6 +77,11 @@ class WebGl2Renderer implements Renderer {
       supportsFloat16Textures: false,
       supportsCompressedTextures: false,
     };
+    // viewProj 默认为单位矩阵，未调用 setViewProj 时 shader 仍能正常绘制。
+    this.viewProjMatrix[0] = 1;
+    this.viewProjMatrix[5] = 1;
+    this.viewProjMatrix[10] = 1;
+    this.viewProjMatrix[15] = 1;
   }
 
   /** 返回工厂创建时传入的配置（如有），便于外部读取。 */
@@ -95,6 +119,15 @@ class WebGl2Renderer implements Renderer {
 
   /** 默认 GL 状态（init 与 context restored 后均调用）。 */
   private setupDefaultState(gl: WebGL2RenderingContext): void {
+    // 创建并绑定默认 VAO。SwiftShader / 严格 WebGL2 实现要求显式 VAO 才能让
+    // vertexAttribPointer / drawElements 正常工作；默认 VAO (0) 会触发 GL_INVALID_OPERATION。
+    if (!this.defaultVao) {
+      this.defaultVao = gl.createVertexArray();
+    }
+    if (this.defaultVao) {
+      gl.bindVertexArray(this.defaultVao);
+    }
+
     gl.clearColor(0, 0, 0, 1);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -107,8 +140,11 @@ class WebGl2Renderer implements Renderer {
 
     // 清空所有 GPU 资源句柄（上下文丢失后这些句柄已无效）
     this.buffers.clear();
+    this.bufferTargets.clear();
     this.textures.clear();
     this.programs.clear();
+    this.pipelineDescs.clear();
+    this.defaultVao = null;
 
     if (this.onContextLost) {
       this.onContextLost();
@@ -176,10 +212,16 @@ class WebGl2Renderer implements Renderer {
     this.buffers.forEach((buf) => this.gl!.deleteBuffer(buf));
     this.textures.forEach((tex) => this.gl!.deleteTexture(tex));
     this.programs.forEach((prog) => this.gl!.deleteProgram(prog));
+    if (this.defaultVao) {
+      this.gl.deleteVertexArray(this.defaultVao);
+      this.defaultVao = null;
+    }
 
     this.buffers.clear();
+    this.bufferTargets.clear();
     this.textures.clear();
     this.programs.clear();
+    this.pipelineDescs.clear();
 
     this.gl = null;
     this.loseExt = null;
@@ -203,19 +245,42 @@ class WebGl2Renderer implements Renderer {
 
     if (!buffer) throw new Error('Failed to create buffer');
 
+    // 根据 BufferDescriptor.target 选择首次绑定的 GL target。
+    // OpenGL ES 3.0 规范 section 2.9.1：buffer 对象首次绑定到某 target 时获得对应
+    // 「类型」，之后不能再绑定到其他 target。若 index buffer 先绑定到 ARRAY_BUFFER，
+    // 后续 draw() 中 bindBuffer(ELEMENT_ARRAY_BUFFER) 会触发 GL_INVALID_OPERATION。
+    const target = desc.target ?? 'vertex';
+    const glTarget = this.getGlBufferTarget(target);
     const usage = this.getBufferUsage(desc.usage);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
+
+    this.gl.bindBuffer(glTarget, buffer);
 
     if (desc.data) {
-      this.gl.bufferData(this.gl.ARRAY_BUFFER, desc.data, usage);
+      this.gl.bufferData(glTarget, desc.data, usage);
     } else {
-      this.gl.bufferData(this.gl.ARRAY_BUFFER, desc.size, usage);
+      this.gl.bufferData(glTarget, desc.size, usage);
     }
 
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
+    this.gl.bindBuffer(glTarget, null);
     this.buffers.set(id, buffer);
+    this.bufferTargets.set(id, target);
 
     return { id, usage: desc.usage };
+  }
+
+  /** 将 BufferTarget 映射为 WebGL2 GL 枚举。 */
+  private getGlBufferTarget(target: BufferTarget): number {
+    const gl = this.gl!;
+    switch (target) {
+      case 'vertex':
+        return gl.ARRAY_BUFFER;
+      case 'index':
+        return gl.ELEMENT_ARRAY_BUFFER;
+      case 'uniform':
+        return gl.UNIFORM_BUFFER;
+      default:
+        return gl.ARRAY_BUFFER;
+    }
   }
 
   private getBufferUsage(usage: BufferDescriptor['usage']): number {
@@ -238,9 +303,13 @@ class WebGl2Renderer implements Renderer {
     const buffer = this.buffers.get(handle.id);
     if (!buffer) throw new Error(`Buffer not found: ${handle.id}`);
 
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
-    this.gl.bufferSubData(this.gl.ARRAY_BUFFER, offset ?? 0, data);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
+    // 复用 createBuffer 时记录的 target，避免把 index/uniform buffer 绑定到错误的 target。
+    const target = this.bufferTargets.get(handle.id) ?? 'vertex';
+    const glTarget = this.getGlBufferTarget(target);
+
+    this.gl.bindBuffer(glTarget, buffer);
+    this.gl.bufferSubData(glTarget, offset ?? 0, data);
+    this.gl.bindBuffer(glTarget, null);
   }
 
   destroyBuffer(handle: BufferHandle): void {
@@ -250,6 +319,7 @@ class WebGl2Renderer implements Renderer {
     if (buffer) {
       this.gl.deleteBuffer(buffer);
       this.buffers.delete(handle.id);
+      this.bufferTargets.delete(handle.id);
     }
   }
 
@@ -390,9 +460,22 @@ class WebGl2Renderer implements Renderer {
     this.gl.deleteShader(vertexShader);
     this.gl.deleteShader(fragmentShader);
 
-    this.programs.set(id, program);
+    // GLSL ES 3.00 核心规范不支持 `layout(binding=N)` 限定符（这是桌面 GL 扩展）。
+    // SwiftShader 等严格实现的 WebGL2 后端会因此报：
+    //   'binding' : invalid layout qualifier: not supported
+    // 解决方案：着色器中仅写 `layout(std140) uniform BodyUniforms { ... }`，
+    // 在程序链接成功后通过 gl.uniformBlockBinding 显式将 uniform block 绑定到
+    // 绑定点 0（与 draw() 中的 gl.bindBufferBase(UNIFORM_BUFFER, 0, ubo) 对应）。
+    // 对不包含 BodyUniforms block 的管线（如后处理管线）此调用为 no-op。
+    const blockIndex = this.gl.getUniformBlockIndex(program, 'BodyUniforms');
+    if (blockIndex !== this.gl.INVALID_INDEX) {
+      this.gl.uniformBlockBinding(program, blockIndex, WebGl2Renderer.UBO_BINDING);
+    }
 
-    return { id };
+    this.programs.set(id, program);
+    this.pipelineDescs.set(id, desc);
+
+    return { id, descriptor: desc };
   }
 
   private createShader(source: string, type: number): WebGLShader {
@@ -414,70 +497,133 @@ class WebGl2Renderer implements Renderer {
 
   destroyPipeline(handle: PipelineHandle): void {
     if (!this.gl) return;
-
     const program = this.programs.get(handle.id);
     if (program) {
       this.gl.deleteProgram(program);
       this.programs.delete(handle.id);
     }
+    this.pipelineDescs.delete(handle.id);
   }
 
   beginPass(desc: RenderPassDescriptor): void {
     if (!this.gl) throw new Error('Renderer not initialized');
 
-    this.gl.clearColor(0, 0, 0, 1);
+    // 默认状态（每次 beginPass 重置 depth，避免上一 pass 的状态泄漏）
     this.gl.clearDepth(1.0);
+    this.gl.enable(this.gl.DEPTH_TEST);
 
+    // 颜色附件：尊重 loadOp（load=保留现有像素，clear=清空，discard=丢弃）
     if (desc.colorAttachments.length > 0 && desc.colorAttachments[0]) {
-      const clear = desc.colorAttachments[0].clear;
-      if (clear) {
+      const attachment = desc.colorAttachments[0];
+      const loadOp = attachment.loadOp ?? 'clear';
+      if (loadOp === 'clear') {
+        const clear = attachment.clear ?? [0, 0, 0, 0];
         this.gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT);
       }
-      this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+      // loadOp === 'load' → 保留现有画布内容（不清空），让多个 body 叠加绘制
+      // loadOp === 'discard' → 内容不重要，可不清空
     }
 
+    // 深度附件：每次 beginPass 默认清空深度，确保 depth test 正确
     if (desc.depthStencilAttachment) {
       const depthClear = desc.depthStencilAttachment.depthClear;
-      if (depthClear !== undefined) {
-        this.gl.clearDepth(depthClear);
+      const depthLoadOp = desc.depthStencilAttachment.depthLoadOp ?? 'clear';
+      if (depthLoadOp === 'clear') {
+        if (depthClear !== undefined) {
+          this.gl.clearDepth(depthClear);
+        }
+        this.gl.clear(this.gl.DEPTH_BUFFER_BIT);
       }
-      this.gl.clear(this.gl.DEPTH_BUFFER_BIT);
     }
-
-    this.gl.enable(this.gl.DEPTH_TEST);
   }
 
   draw(call: DrawCall): void {
     if (!this.gl) throw new Error('Renderer not initialized');
 
+    const gl = this.gl;
     const program = this.programs.get(call.pipeline.id);
     if (!program) throw new Error(`Pipeline not found: ${call.pipeline.id}`);
 
     const vertexBuffer = this.buffers.get(call.vertexBuffer.id);
     if (!vertexBuffer) throw new Error(`Vertex buffer not found: ${call.vertexBuffer.id}`);
 
-    this.gl.useProgram(program);
+    // 绑定默认 VAO。SwiftShader 等严格 WebGL2 实现要求显式 VAO 才能让
+    // vertexAttribPointer / drawElements 正常工作。VAO 封装了 ARRAY_BUFFER 绑定状态
+    // 之外的顶点属性配置与 ELEMENT_ARRAY_BUFFER 绑定。
+    if (this.defaultVao) {
+      gl.bindVertexArray(this.defaultVao);
+    }
 
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertexBuffer);
-    this.gl.enableVertexAttribArray(0);
-    this.gl.vertexAttribPointer(0, 3, this.gl.FLOAT, false, 0, 0);
+    // 获取 pipeline 描述符，用于正确设置顶点属性（stride / offset / format）
+    const pipelineDesc = this.pipelineDescs.get(call.pipeline.id) ?? call.pipeline.descriptor;
 
+    gl.useProgram(program);
+
+    // 上传 view-projection 矩阵到 shader 的 u_viewProj uniform（每帧由编排器设置）
+    const viewProjLoc = gl.getUniformLocation(program, 'u_viewProj');
+    if (viewProjLoc) {
+      gl.uniformMatrix4fv(viewProjLoc, false, this.viewProjMatrix);
+    }
+
+    // 绑定 uniform buffer（UBO）到 binding=0，对应 GLSL layout(std140, binding=0) uniform block
+    if (call.uniformBuffer) {
+      const ubo = this.buffers.get(call.uniformBuffer.id);
+      if (ubo) {
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, WebGl2Renderer.UBO_BINDING, ubo);
+      }
+    }
+
+    // 绑定顶点缓冲并按 PipelineDescriptor.vertexAttributes 配置顶点属性
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    if (pipelineDesc) {
+      for (let i = 0; i < pipelineDesc.vertexAttributes.length; i++) {
+        const attr = pipelineDesc.vertexAttributes[i]!;
+        const size = attr.format === 'float32x3' ? 3 : attr.format === 'float32x2' ? 2 : 1;
+        gl.enableVertexAttribArray(i);
+        gl.vertexAttribPointer(i, size, gl.FLOAT, false, attr.stride, attr.offset);
+      }
+    } else {
+      // 回退：仅启用 location 0（position），stride=0（紧密排列）
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    }
+
+    // 绘制
     if (call.indexBuffer) {
       const indexBuffer = this.buffers.get(call.indexBuffer.id);
       if (indexBuffer) {
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-        this.gl.drawElements(this.gl.TRIANGLES, call.indexCount ?? call.vertexCount, this.gl.UNSIGNED_INT, 0);
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, null);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.drawElements(gl.TRIANGLES, call.indexCount ?? call.vertexCount, gl.UNSIGNED_INT, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
       } else {
-        this.gl.drawArrays(this.gl.TRIANGLES, 0, call.vertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, call.vertexCount);
       }
     } else {
-      this.gl.drawArrays(this.gl.TRIANGLES, 0, call.vertexCount);
+      gl.drawArrays(gl.TRIANGLES, 0, call.vertexCount);
     }
 
-    this.gl.disableVertexAttribArray(0);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
-    this.gl.useProgram(null);
+    // 清理顶点属性状态
+    if (pipelineDesc) {
+      for (let i = 0; i < pipelineDesc.vertexAttributes.length; i++) {
+        gl.disableVertexAttribArray(i);
+      }
+    } else {
+      gl.disableVertexAttribArray(0);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    if (call.uniformBuffer) {
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, WebGl2Renderer.UBO_BINDING, null);
+    }
+    gl.useProgram(null);
+  }
+
+  /** 设置当前帧的 view-projection 矩阵（列主序 4×4，16 个 float）。 */
+  setViewProj(matrix: ArrayLike<number>): void {
+    const src = matrix;
+    for (let i = 0; i < 16 && i < src.length; i++) {
+      this.viewProjMatrix[i] = src[i] as number;
+    }
   }
 
   endPass(): void {

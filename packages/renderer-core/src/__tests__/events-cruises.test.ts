@@ -65,6 +65,7 @@ class MockRenderer implements Renderer {
   async readPixels(): Promise<Uint8Array> {
     return new Uint8Array(0);
   }
+  setViewProj(): void {}
 
   createBuffer(): BufferHandle {
     this.buffersCreated += 1;

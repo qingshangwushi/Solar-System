@@ -160,16 +160,24 @@ def test_clip_time_range_empty_window_keeps_endpoints(tiny_spice_data: dict) -> 
 # ============================================================
 
 def test_fit_chebyshev_segments_count(tiny_spice_data: dict) -> None:
-    """fit_chebyshev 默认每体切成 4 段，每段系数长度 = degree + 1（样本不足时降阶）。"""
+    """fit_chebyshev 自适应分段，段长 ≤ 365 天（E-43 修复）。
+
+    tiny_spice_data 的 8 样本跨越 700 天（MJD_1900..MJD_1900+700），
+    按 365 天上限自适应分段 → 2 段（ceil(700/365) = 2）。
+    每段系数长度 = degree + 1（样本不足时降阶）。
+    """
     fitted = be.fit_chebyshev(tiny_spice_data, degree=3)
     for body in fitted["bodies"]:
-        assert len(body["segments"]) == 4
+        # 700 天跨度 / 365 天上限 → 2 段（自适应分段，修复 E-43 切比雪夫发散）
+        assert len(body["segments"]) == 2
         for seg in body["segments"]:
             # 三分量系数长度一致；样本不足时降阶，长度 >= 1
             assert len(seg["coef_x"]) == len(seg["coef_y"]) == len(seg["coef_z"])
             assert len(seg["coef_x"]) >= 1
             assert seg["t_start"] <= seg["t_end"]
             assert seg["samples_used"] >= 1
+            # 段长不超过 365 天上限
+            assert (seg["t_end"] - seg["t_start"]) <= 365.0 + 1e-6
 
 
 def test_fit_chebyshev_enough_samples_keeps_degree() -> None:

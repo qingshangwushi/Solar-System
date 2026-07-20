@@ -462,6 +462,22 @@ export class GpuBenchmarkRunner {
     // 拿到上下文：实测 GPU 帧时
     if (gl) {
       try {
+        // 创建最小化 shader program，避免 drawArrays 因无 program 触发
+        // WebGL INVALID_OPERATION 警告（FR-BOOT-004 诊断不应污染控制台）。
+        const vsSource = '#version 300 es\nvoid main(){gl_Position=vec4(0.0);}';
+        const fsSource = '#version 300 es\nout lowp vec4 c;void main(){c=vec4(0.0);}';
+        const vs = gl.createShader(gl.VERTEX_SHADER)!;
+        const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
+        gl.shaderSource(vs, vsSource);
+        gl.shaderSource(fs, fsSource);
+        gl.compileShader(vs);
+        gl.compileShader(fs);
+        const prog = gl.createProgram()!;
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
+
         const buffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         // triangleCount * 3 顶点 * 3 float
@@ -490,6 +506,10 @@ export class GpuBenchmarkRunner {
 
         // 清理资源
         gl.deleteBuffer(buffer);
+        gl.useProgram(null);
+        gl.deleteProgram(prog);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
         const loseExt: { loseContext(): void } | null = gl.getExtension('WEBGL_lose_context');
         loseExt?.loseContext();
 

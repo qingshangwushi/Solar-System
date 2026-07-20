@@ -36,3 +36,10 @@ Thumbs.db
 # Generated
 packages/astro-core-wasm/pkg/
 release/packages/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local TLS test certificates (regenerate with release/server/tls/generate-cert.sh)
+release/server/tls/

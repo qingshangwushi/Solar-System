@@ -9,7 +9,12 @@
 #![allow(missing_docs)]
 
 pub mod root;
+pub mod satellite_events;
 pub mod types;
 
 pub use root::{find_extremum, find_root};
+pub use satellite_events::{
+    find_satellite_eclipses, find_satellite_transits, solution_to_record, PositionEvaluator,
+    SatelliteEventInput, SatelliteEventSolution,
+};
 pub use types::{EventId, EventPhase, EventPrecision, EventRecord, EventType};

@@ -48,7 +48,49 @@ describe('tour 状态机（E-26）', () => {
 
   it('tour.validateResources 返回 ok:true, missing_packages:[]（不再报 TOUR_RESOURCES_MISSING）', () => {
     processRequest(makeReq({ method: 'tour.load', tour_id: 't-1' }));
-    const resp = processRequest(makeReq({ method: 'tour.validateResources' }));
+    // FR-TOUR-006：传入空 required_body_ids，应返回 ok=true, missing_packages=[]
+    const resp = processRequest(
+      makeReq({ method: 'tour.validateResources', required_body_ids: [] })
+    );
+    expect(resp.ok).toBe(true);
+    if (resp.ok) {
+      const result = resp.result as { ok: boolean; missing_packages: string[] };
+      expect(result.ok).toBe(true);
+      expect(result.missing_packages).toEqual([]);
+    }
+  });
+
+  it('FR-TOUR-006：tour.validateResources 真实校验 ephemerisRegistry 中缺失的天体', async () => {
+    const { registerEphemerisEntry } = await import('../astro-core-worker.js');
+    processRequest(makeReq({ method: 'tour.load', tour_id: 't-validation' }));
+    // 注册天体 399 已加载，未注册 599/301
+    registerEphemerisEntry(399, [51544.0, 61544.0]);
+    const resp = processRequest(
+      makeReq({
+        method: 'tour.validateResources',
+        required_body_ids: [399, 599, 301],
+      })
+    );
+    expect(resp.ok).toBe(true);
+    if (resp.ok) {
+      const result = resp.result as { ok: boolean; missing_packages: string[] };
+      expect(result.ok).toBe(false);
+      expect(result.missing_packages).toEqual(['ephemeris-599', 'ephemeris-301']);
+    }
+  });
+
+  it('FR-TOUR-006：tour.validateResources 全部已注册时返回 ok=true, missing_packages=[]', async () => {
+    const { registerEphemerisEntry } = await import('../astro-core-worker.js');
+    processRequest(makeReq({ method: 'tour.load', tour_id: 't-validation-all' }));
+    registerEphemerisEntry(10, [51544.0, 61544.0]);
+    registerEphemerisEntry(399, [51544.0, 61544.0]);
+    registerEphemerisEntry(301, [51544.0, 61544.0]);
+    const resp = processRequest(
+      makeReq({
+        method: 'tour.validateResources',
+        required_body_ids: [10, 399, 301],
+      })
+    );
     expect(resp.ok).toBe(true);
     if (resp.ok) {
       const result = resp.result as { ok: boolean; missing_packages: string[] };

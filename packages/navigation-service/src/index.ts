@@ -38,6 +38,13 @@ export interface VisibilityState {
 
 export interface NavigationService {
   search(query: string): NavigationResult[];
+  /**
+   * FR-NAV-003：按天体类型、所属系统、尺寸、轨道区域和资产等级筛选。
+   *
+   * 同时支持自由文本搜索（query）与多维度筛选（filter）。
+   * query 为空字符串时仅按 filter 筛选；filter 为 undefined 时退化为全量。
+   */
+  searchWithFilter?(query: string, filter?: NavigationFilter): NavigationResult[];
   getBody(bodyId: BodyId): BodyEntry | null;
   getParent(bodyId: BodyId): BodyEntry | null;
   getChildren(bodyId: BodyId): BodyEntry[];
@@ -62,6 +69,56 @@ export interface NavigationService {
   ): ScreenEdgeIndicator | null;
 }
 
+/**
+ * 轨道区域分类（FR-NAV-003）。
+ *
+ * 按天体在太阳系中的位置粗分。
+ */
+export type OrbitalRegion =
+  | 'inner'    // 水星/金星/地球/火星及其卫星
+  | 'outer'    // 木星/土星/天王星/海王星及其卫星
+  | 'dwarf'    // 矮行星（冥王星/谷神星等）
+  | 'asteroid-belt'  // 主带小行星
+  | 'kuiper-belt'    // 柯伊伯带天体
+  | 'comet';   // 彗星
+
+/**
+ * 尺寸分类（FR-NAV-003）。
+ */
+export type SizeClass =
+  | 'giant'    // 半径 ≥ 20000 km（气态巨行星）
+  | 'large'    // 2000 ≤ r < 20000 km
+  | 'medium'   // 500 ≤ r < 2000 km
+  | 'small'    // 100 ≤ r < 500 km
+  | 'tiny';    // r < 100 km
+
+/**
+ * 导航筛选条件（FR-NAV-003）。
+ *
+ * 所有字段都是可选的；未指定字段不参与筛选。
+ * 多值字段（types/systems/...）使用 OR 关系。
+ */
+export interface NavigationFilter {
+  /** 天体类型筛选（如 ['planet', 'satellite']）。 */
+  types?: BodyType[];
+  /** 所属系统筛选（如 ['sun'] = 直接绕日的天体；['jupiter'] = 木星系）。 */
+  systems?: string[];
+  /** 尺寸分类筛选。 */
+  sizeClasses?: SizeClass[];
+  /** 轨道区域筛选。 */
+  orbitalRegions?: OrbitalRegion[];
+  /** 资产等级筛选（如 ['S', 'A']）。 */
+  assetTiers?: AssetTier[];
+  /** 父天体 ID 筛选（精确匹配）。 */
+  parentBodyIds?: BodyId[];
+  /** 半径上限（km）。 */
+  maxRadiusKm?: number;
+  /** 半径下限（km）。 */
+  minRadiusKm?: number;
+  /** 结果数量上限，默认 20。 */
+  limit?: number;
+}
+
 export interface Vec3d {
   x: number;
   y: number;
@@ -77,6 +134,8 @@ export interface ScreenEdgeIndicator {
 export interface PinyinIndexEntry {
   fullPinyin: string;
   firstLetter: string;
+  /** 拼音首字母串（如 "地球" → "dq"），支持 FR-NAV-002 拼音首字母搜索。 */
+  pinyinInitials: string;
   bodyId: BodyId;
 }
 
@@ -161,6 +220,46 @@ const PINYIN_MAP: Record<string, string> = {
   '坦普尔1号彗星': 'tanpuer1haohuixing',
 };
 
+/**
+ * 单字 → 拼音首字母映射（用于推导拼音首字母串，支持 FR-NAV-002）。
+ *
+ * 覆盖目录中出现的所有汉字。数字与拉丁字符原样取小写首字符。
+ * 未命中时回退为字符本身的小写形式，保证搜索不中断。
+ */
+const CHAR_INITIAL_MAP: Record<string, string> = {
+  // 天体名常用字
+  '太': 't', '阳': 'y', '水': 's', '星': 'x', '金': 'j', '地': 'd', '球': 'q',
+  '火': 'h', '木': 'm', '土': 't', '天': 't', '王': 'w', '海': 'h', '月': 'y',
+  '冥': 'm', '谷': 'g', '神': 's', '阋': 'x', '鸟': 'n', '妊': 'r',
+  '卫': 'w', '一': 'y', '二': 'e', '三': 's', '四': 's', '五': 'w', '六': 'l',
+  '七': 'q', '八': 'b',
+  '爱': 'a', '贝': 'b', '加': 'j', '斯': 's', '普': 'p', '拉': 'l', '艾': 'a',
+  '达': 'd', '系': 'x', '川': 'c',
+  '哈': 'h', '雷': 'l', '彗': 'h', '博': 'b', '怀': 'h', '尔': 'e', '德': 'd',
+  '号': 'h', '坦': 't',
+};
+
+/**
+ * 提取中文天体名的拼音首字母串。
+ * 逐字符查 CHAR_INITIAL_MAP，未命中回退为字符小写。
+ * 数字与拉丁字符原样取小写首字符。
+ * 例：'地球' → 'dq'，'天王星' → 'twx'，'怀尔德2号彗星' → 'hed2hx'。
+ */
+function getPinyinInitials(chineseName: string): string {
+  let initials = '';
+  for (const ch of chineseName) {
+    if (CHAR_INITIAL_MAP[ch]) {
+      initials += CHAR_INITIAL_MAP[ch];
+    } else if (/[a-zA-Z0-9]/.test(ch)) {
+      initials += ch.toLowerCase();
+    } else {
+      // 未知汉字：回退为字符小写形式（不会匹配有效查询，但不中断索引构建）
+      initials += ch.toLowerCase();
+    }
+  }
+  return initials;
+}
+
 export class NavigationServiceImpl implements NavigationService {
   private bodies: Map<BodyId, BodyEntry>;
   private pinyinIndex: PinyinIndexEntry[];
@@ -181,7 +280,8 @@ export class NavigationServiceImpl implements NavigationService {
     for (const body of bodies) {
       const fullPinyin = this.getPinyin(body.nameZh);
       const firstLetter = fullPinyin.charAt(0).toUpperCase();
-      entries.push({ fullPinyin, firstLetter, bodyId: body.bodyId });
+      const pinyinInitials = getPinyinInitials(body.nameZh);
+      entries.push({ fullPinyin, firstLetter, pinyinInitials, bodyId: body.bodyId });
     }
     return entries;
   }
@@ -238,7 +338,9 @@ export class NavigationServiceImpl implements NavigationService {
         if (
           pinyinEntry &&
           (pinyinEntry.fullPinyin.includes(normalizedQuery) ||
-            pinyinEntry.firstLetter.toLowerCase() === normalizedQuery)
+            pinyinEntry.firstLetter.toLowerCase() === normalizedQuery ||
+            pinyinEntry.pinyinInitials.includes(normalizedQuery) ||
+            pinyinEntry.pinyinInitials.startsWith(normalizedQuery))
         ) {
           matchType = 'pinyin';
           score = 40;
@@ -270,6 +372,151 @@ export class NavigationServiceImpl implements NavigationService {
 
     results.sort((a, b) => b.score - a.score);
     return results.slice(0, 20);
+  }
+
+  /**
+   * FR-NAV-003：按天体类型、所属系统、尺寸、轨道区域和资产等级筛选。
+   *
+   * 实现策略：
+   * 1. 若 query 非空，先调用 search(query) 得到候选集合（最多 20 条）
+   * 2. 若 query 为空，候选集合为全部 bodies
+   * 3. 应用 NavigationFilter 中的每个字段（types/systems/sizeClasses/...）
+   * 4. 按 score 降序，截取 filter.limit（默认 50）
+   *
+   * 注意：filter 中所有字段为 AND 关系；同一字段内多值为 OR 关系。
+   */
+  searchWithFilter(query: string, filter?: NavigationFilter): NavigationResult[] {
+    // 1. 候选集合
+    let candidates: NavigationResult[];
+    if (query && query.trim().length > 0) {
+      candidates = this.search(query);
+    } else {
+      // 空 query：全量候选，分数统一为 0
+      candidates = [];
+      for (const body of this.bodies.values()) {
+        const parent = body.parentBodyId ? this.bodies.get(body.parentBodyId) : null;
+        candidates.push({
+          bodyId: body.bodyId,
+          nameZh: body.nameZh,
+          nameEn: body.nameEn,
+          type: body.type,
+          parentNameZh: parent?.nameZh,
+          matchType: 'fuzzy',
+          score: 0,
+        });
+      }
+    }
+
+    if (!filter) {
+      return candidates.slice(0, 20);
+    }
+
+    // 2. 应用筛选
+    const filtered = candidates.filter((r) => {
+      const body = this.bodies.get(r.bodyId);
+      if (!body) return false;
+
+      // 类型筛选
+      if (filter.types && filter.types.length > 0) {
+        if (!filter.types.includes(body.type)) return false;
+      }
+
+      // 资产等级筛选
+      if (filter.assetTiers && filter.assetTiers.length > 0) {
+        if (!filter.assetTiers.includes(body.assetTier)) return false;
+      }
+
+      // 父天体 ID 筛选
+      if (filter.parentBodyIds && filter.parentBodyIds.length > 0) {
+        if (body.parentBodyId === null || !filter.parentBodyIds.includes(body.parentBodyId)) {
+          return false;
+        }
+      }
+
+      // 半径范围筛选
+      if (filter.minRadiusKm !== undefined && body.radiusKm < filter.minRadiusKm) {
+        return false;
+      }
+      if (filter.maxRadiusKm !== undefined && body.radiusKm > filter.maxRadiusKm) {
+        return false;
+      }
+
+      // 尺寸分类筛选
+      if (filter.sizeClasses && filter.sizeClasses.length > 0) {
+        const sizeClass = this.classifySize(body.radiusKm);
+        if (!filter.sizeClasses.includes(sizeClass)) return false;
+      }
+
+      // 所属系统筛选（按母星英文名小写匹配）
+      if (filter.systems && filter.systems.length > 0) {
+        const parent = body.parentBodyId ? this.bodies.get(body.parentBodyId) : null;
+        const systemName = parent ? parent.nameEn.toLowerCase() : 'sun';
+        // 顶层天体（绕日）属于 'sun' 系统
+        const systemKey = body.parentBodyId === null ? 'sun' : systemName;
+        if (!filter.systems.includes(systemKey)) return false;
+      }
+
+      // 轨道区域筛选
+      if (filter.orbitalRegions && filter.orbitalRegions.length > 0) {
+        const region = this.classifyOrbitalRegion(body);
+        if (!filter.orbitalRegions.includes(region)) return false;
+      }
+
+      return true;
+    });
+
+    // 3. 排序与截断
+    filtered.sort((a, b) => b.score - a.score);
+    const limit = filter.limit ?? 50;
+    return filtered.slice(0, limit);
+  }
+
+  /**
+   * 根据半径分类尺寸（FR-NAV-003）。
+   *
+   * - giant: ≥ 20000 km（气态巨行星）
+   * - large: 2000 ≤ r < 20000 km
+   * - medium: 500 ≤ r < 2000 km
+   * - small: 100 ≤ r < 500 km
+   * - tiny: r < 100 km
+   */
+  private classifySize(radiusKm: number): SizeClass {
+    if (radiusKm >= 20000) return 'giant';
+    if (radiusKm >= 2000) return 'large';
+    if (radiusKm >= 500) return 'medium';
+    if (radiusKm >= 100) return 'small';
+    return 'tiny';
+  }
+
+  /**
+   * 根据天体类型与母星分类轨道区域（FR-NAV-003）。
+   *
+   * - inner: 水星/金星/地球/火星及其卫星
+   * - outer: 木星/土星/天王星/海王星及其卫星
+   * - dwarf: 矮行星
+   * - asteroid-belt: 主带小行星
+   * - kuiper-belt: 柯伊伯带天体
+   * - comet: 彗星
+   */
+  private classifyOrbitalRegion(body: BodyEntry): OrbitalRegion {
+    if (body.type === 'comet') return 'comet';
+    if (body.type === 'asteroid') return 'asteroid-belt';
+    if (body.type === 'dwarf-planet') return 'dwarf';
+
+    // 行星与卫星按母星区域分
+    const parent = body.parentBodyId ? this.bodies.get(body.parentBodyId) : null;
+    if (body.type === 'planet') {
+      // bodyId 199/299/399/499 = 内行星；599/699/799/899 = 外行星
+      if ([199, 299, 399, 499].includes(body.bodyId as number)) return 'inner';
+      if ([599, 699, 799, 899].includes(body.bodyId as number)) return 'outer';
+    }
+    if (body.type === 'satellite' && parent) {
+      // 通过母星判断
+      if ([199, 299, 399, 499].includes(parent.bodyId as number)) return 'inner';
+      if ([599, 699, 799, 899].includes(parent.bodyId as number)) return 'outer';
+      if (parent.bodyId === 134340) return 'dwarf';
+    }
+    return 'inner';
   }
 
   getBody(bodyId: BodyId): BodyEntry | null {

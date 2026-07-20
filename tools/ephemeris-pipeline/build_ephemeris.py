@@ -54,21 +54,65 @@ MJD_1900 = 15020.0
 MJD_2100 = 88069.0
 
 # 8 大行星 + 月球 + 太阳的 Keplerian 根数（用于 SPK 不可用时回退合成）
-# (body_id, name, semi_major_au, eccentricity, inclination_deg, long_asc_node_deg, arg_perihelion_deg, mean_anomaly_deg_at_J2000, period_days)
+# (body_id, name, semi_major_au, eccentricity, inclination_deg, long_asc_node_deg, arg_perihelion_deg, mean_anomaly_deg_at_J2000, period_days, parent_body_id_or_None)
+# FR-ASTRO-002：主要卫星（伽利略卫星、泰坦、海卫一）使用 Keplerian 根数合成星历。
+# 根数源自 IAU/Natural Satellite Bulletin（J2000 历元），相对母天体质心。
 KEPLER_FALLBACK = [
-    (0, "Sun", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
-    (1, "Mercury", 0.387, 0.2056, 7.005, 48.331, 29.124, 174.796, 87.97),
-    (2, "Venus", 0.723, 0.0068, 3.395, 76.680, 54.884, 50.115, 224.70),
-    (3, "Earth", 1.000, 0.0167, 0.000, -11.260, 114.208, 357.517, 365.26),
-    (4, "Mars", 1.524, 0.0934, 1.850, 49.558, 286.502, 19.412, 686.98),
-    (5, "Jupiter", 5.203, 0.0489, 1.303, 100.464, 273.867, 20.020, 4332.59),
-    (6, "Saturn", 9.537, 0.0565, 2.485, 113.665, 339.392, 317.020, 10759.22),
-    (7, "Uranus", 19.191, 0.0457, 0.773, 74.006, 96.998, 142.238, 30688.5),
-    (8, "Neptune", 30.069, 0.0113, 1.770, 131.784, 276.336, 256.228, 60182.0),
-    (301, "Moon", 0.00257, 0.0549, 5.145, 0.0, 0.0, 0.0, 27.32),  # 相对地球
+    (0, "Sun", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, None),
+    (1, "Mercury", 0.387, 0.2056, 7.005, 48.331, 29.124, 174.796, 87.97, 0),
+    (2, "Venus", 0.723, 0.0068, 3.395, 76.680, 54.884, 50.115, 224.70, 0),
+    (3, "Earth", 1.000, 0.0167, 0.000, -11.260, 114.208, 357.517, 365.26, 0),
+    (4, "Mars", 1.524, 0.0934, 1.850, 49.558, 286.502, 19.412, 686.98, 0),
+    (5, "Jupiter", 5.203, 0.0489, 1.303, 100.464, 273.867, 20.020, 4332.59, 0),
+    (6, "Saturn", 9.537, 0.0565, 2.485, 113.665, 339.392, 317.020, 10759.22, 0),
+    (7, "Uranus", 19.191, 0.0457, 0.773, 74.006, 96.998, 142.238, 30688.5, 0),
+    (8, "Neptune", 30.069, 0.0113, 1.770, 131.784, 276.336, 256.228, 60182.0, 0),
+    (301, "Moon", 0.00257, 0.0549, 5.145, 0.0, 0.0, 0.0, 27.32, 3),  # 相对地球
+    # FR-ASTRO-002：主要卫星（伽利略卫星 + 泰坦 + 海卫一）
+    # 半长轴单位 AU（相对母星），数据源：JPL Solar System Dynamics
+    (501, "Io", 0.002819, 0.0041, 0.036, 43.977, 342.628, 297.430, 1.769, 5),
+    (502, "Europa", 0.004488, 0.0094, 0.466, 219.106, 54.428, 57.370, 3.551, 5),
+    (503, "Ganymede", 0.007158, 0.0013, 0.177, 63.552, 50.828, 317.540, 7.155, 5),
+    (504, "Callisto", 0.012598, 0.0074, 0.192, 298.848, 50.288, 12.838, 16.689, 5),
+    (606, "Titan", 0.008176, 0.0288, 0.330, 28.060, 180.532, 162.860, 15.945, 6),
+    (801, "Triton", 0.002374, 0.000016, 156.865, 170.000, 340.000, 240.000, 5.877, 8),  # 逆行
 ]
 
 AU_KM = 1.495978707e8  # 1 AU = km
+
+# 简化 ID → NAIF ID 映射（修复 E-44：构建管线必须同时写出 NAIF ID 文件名，
+# 否则运行时 orchestrator.fetch(`ephemeris-${naifId}.bin`) 会 404）。
+# orchestrator 通过 bodyIdOverride 将二进制内的简化 ID 覆盖为 NAIF ID 注册到 WASM。
+# FR-ASTRO-002：主要卫星的 NAIF ID 与简化 ID 一致（501/502/503/504/606/801）。
+SIMPLE_ID_TO_NAIF = {
+    0: 10,    # Sun
+    1: 199,   # Mercury
+    2: 299,   # Venus
+    3: 399,   # Earth
+    4: 499,   # Mars
+    5: 599,   # Jupiter
+    6: 699,   # Saturn
+    7: 799,   # Uranus
+    8: 899,   # Neptune
+    301: 301, # Moon（NAIF 与简化 ID 一致）
+    501: 501, # Io
+    502: 502, # Europa
+    503: 503, # Ganymede
+    504: 504, # Callisto
+    606: 606, # Titan
+    801: 801, # Triton
+}
+
+# FR-ASTRO-002：主要卫星的母星映射（用于位置合成：卫星位置 = 母星位置 + 相对母星位置）
+SATELLITE_PARENT = {
+    301: 3,   # Moon → Earth
+    501: 5,   # Io → Jupiter
+    502: 5,   # Europa → Jupiter
+    503: 5,   # Ganymede → Jupiter
+    504: 5,   # Callisto → Jupiter
+    606: 6,   # Titan → Saturn
+    801: 8,   # Triton → Neptune
+}
 
 
 # ============================================================
@@ -115,29 +159,52 @@ def read_spk(path: str | None) -> dict[str, Any]:
 
 
 def _keplerian_synthesis(precision: int) -> dict[str, Any]:
-    """基于 KEPLER_FALLBACK 表合成星历样本。"""
+    """基于 KEPLER_FALLBACK 表合成星历样本。
+
+    采样策略（修复 E-43）：
+    - 太阳（body_id=0）：恒位于原点，8 点采样即可（静态天体无振荡）。
+    - 月球（body_id=301）：周期 27.32 天，自适应采样 → ~16 点/周期。
+    - 行星：按各自轨道周期自适应采样 → ~16 点/周期，最大间隔 30 天。
+    - FR-ASTRO-002：主要卫星（501/502/503/504/606/801）按各自周期自适应采样，
+      位置 = 母星日心位置 + 卫星相对母星位置。
+
+    原 ``n=64`` 等距采样对地球（周期 365 天）仅每 1142 天采一点，
+    不足一个轨道周期，导致切比雪夫拟合严重欠采样与发散。
+    """
+    # 预建 body_id → KEPLER_FALLBACK 条目映射，供卫星位置合成查询母星
+    body_map = {entry[0]: entry for entry in KEPLER_FALLBACK}
+
     bodies = []
-    for bid, name, a, e, inc, lan, argp, m0, period in KEPLER_FALLBACK:
+    for entry in KEPLER_FALLBACK:
+        bid, name, a, e, inc, lan, argp, m0, period, parent_id = entry
         if bid == 0:
-            # 太阳在质心系原点
+            # 太阳在质心系原点（a_au=0，恒静止）：8 点足够
             samples = [(mjd, 0.0, 0.0, 0.0) for mjd in _sample_times(period, n=8)]
             frame = FRAME_HCI
-        elif bid == 301:
-            # 月球绕地球：以地球位置为原点采样
-            earth = next(b for b in KEPLER_FALLBACK if b[0] == 3)
-            earth_pos = lambda mjd: _kepler_position(earth, mjd)
-            samples = [
-                (mjd,
-                 earth_pos(mjd)[0] + _kepler_position((301, name, a, e, inc, lan, argp, m0, period), mjd)[0],
-                 earth_pos(mjd)[1] + _kepler_position((301, name, a, e, inc, lan, argp, m0, period), mjd)[1],
-                 earth_pos(mjd)[2] + _kepler_position((301, name, a, e, inc, lan, argp, m0, period), mjd)[2])
-                for mjd in _sample_times(period, n=64)
-            ]
+        elif parent_id is not None and parent_id != 0:
+            # FR-ASTRO-002：卫星（月球/伽利略卫星/泰坦/海卫一）位置 = 母星位置 + 相对母星位置
+            parent_entry = body_map.get(parent_id)
+            if parent_entry is None:
+                # 母星不在表中：仅用卫星相对位置（退化为质心系）
+                samples = [
+                    (mjd, *_kepler_position(entry, mjd))
+                    for mjd in _sample_times(period)
+                ]
+            else:
+                parent_pos = lambda mjd: _kepler_position(parent_entry, mjd)
+                sat_rel = lambda mjd: _kepler_position(entry, mjd)
+                samples = [
+                    (mjd,
+                     parent_pos(mjd)[0] + sat_rel(mjd)[0],
+                     parent_pos(mjd)[1] + sat_rel(mjd)[1],
+                     parent_pos(mjd)[2] + sat_rel(mjd)[2])
+                    for mjd in _sample_times(period)
+                ]
             frame = FRAME_HCI
         else:
             samples = [
-                (mjd, *_kepler_position((bid, name, a, e, inc, lan, argp, m0, period), mjd))
-                for mjd in _sample_times(period, n=64)
+                (mjd, *_kepler_position(entry, mjd))
+                for mjd in _sample_times(period)
             ]
             frame = FRAME_HCI
         bodies.append({
@@ -150,21 +217,51 @@ def _keplerian_synthesis(precision: int) -> dict[str, Any]:
     return {"bodies": bodies}
 
 
-def _sample_times(period_days: float, n: int = 64) -> list[float]:
-    """在 [MJD_1900, MJD_2100] 内等距采样 n 点。"""
-    if n <= 1:
-        return [MJD_1900]
-    step = (MJD_2100 - MJD_1900) / (n - 1)
-    return [MJD_1900 + i * step for i in range(n)]
+def _sample_times(period_days: float, n: int | None = None) -> list[float]:
+    """在 [MJD_1900, MJD_2100] 内等距采样。
+
+    采样规则（修复 E-43：原实现仅取 64 点，对短周期天体严重欠采样导致切比雪夫发散）：
+
+    - ``n`` 显式指定时：等距采样 ``n`` 点（用于太阳等静止天体，位置恒为原点）。
+    - ``n`` 为 None 时：按轨道周期自适应采样——
+      * 每个轨道周期至少 16 个采样点（满足 7 阶切比雪夫最小二乘拟合的 Nyquist×4 安全系数）；
+      * 最大采样间隔 30 天（对长周期天体保证段内有足够样本）；
+      * FR-ASTRO-002：总样本数上限 50,000（对短周期卫星如 Io 1.769 天，
+        原 16 点/周期会产生 ~73 万样本，导致纯 Python 拟合耗时过长；
+        50,000 样本对 200 年范围仍保证每段 ≥200 样本，远超 7 阶切比雪夫需求）。
+
+    设计文档 14.2 要求"生成分段切比雪夫系数"覆盖 1900—2100 全范围，且
+    设计文档 13.4 / 用户精度约束要求 P2 级计算模型不得出现伪精度或发散。
+    """
+    total_days = MJD_2100 - MJD_1900
+    if n is not None:
+        if n <= 1:
+            return [MJD_1900]
+        step = total_days / (n - 1)
+        return [MJD_1900 + i * step for i in range(n)]
+    # 自适应：每周期 16 点，但最大间隔 30 天
+    if period_days is None or period_days <= 0:
+        period_days = 365.0
+    step = min(period_days / 16.0, 30.0)
+    n_samples = max(2, int(math.ceil(total_days / step)) + 1)
+    # FR-ASTRO-002：短周期卫星样本数上限（避免纯 Python 拟合耗时过长）
+    MAX_SAMPLES = 50000
+    if n_samples > MAX_SAMPLES:
+        n_samples = MAX_SAMPLES
+    step = total_days / (n_samples - 1)
+    return [MJD_1900 + i * step for i in range(n_samples)]
 
 
 def _kepler_position(elem: tuple, mjd: float) -> tuple[float, float, float]:
     """从 Keplerian 根数计算 J2000 日心惯性系位置（km）。
 
-    elem: (body_id, name, a_au, e, inc_deg, lan_deg, argp_deg, m0_deg, period_days)
+    elem: (body_id, name, a_au, e, inc_deg, lan_deg, argp_deg, m0_deg, period_days[, parent_body_id])
     mjd:  修正儒略日
+
+    FR-ASTRO-002：扩展为 10 元组（含 parent_body_id），但位置计算不依赖母星，
+    母星合成在 _keplerian_synthesis 中完成。使用 *_rest 兼容 9/10 元组。
     """
-    _bid, _name, a_au, e, inc_deg, lan_deg, argp_deg, m0_deg, period = elem
+    _bid, _name, a_au, e, inc_deg, lan_deg, argp_deg, m0_deg, period, *_rest = elem
     if a_au == 0.0 or period == 0.0:
         return (0.0, 0.0, 0.0)
 
@@ -261,7 +358,10 @@ def fit_chebyshev(segments: dict[str, Any], degree: int) -> dict[str, Any]:
         }
     """
     fitted_bodies = []
-    n_segments_per_body = 4
+    # 每段样本数目标：至少 (degree + 1) 系数的 2 倍样本，保证最小二乘稳定性
+    samples_per_segment_target = max(degree + 1, 16)
+    # 段长上限：365 天（避免长周期天体在单段内跨多个轨道周期时欠拟合）
+    max_segment_days = 365.0
 
     for body in segments.get("bodies", []):
         samples = body.get("samples", [])
@@ -273,9 +373,18 @@ def fit_chebyshev(segments: dict[str, Any], degree: int) -> dict[str, Any]:
         if t_max == t_min:
             t_max = t_min + 1.0
 
-        seg_len = (t_max - t_min) / n_segments_per_body
+        # 自适应分段（修复 E-43：原固定 4 段对 200 年范围过长导致切比雪夫发散）
+        # 1. 按每段目标样本数估算段数
+        n_by_samples = max(1, len(samples_sorted) // samples_per_segment_target)
+        seg_len = (t_max - t_min) / n_by_samples
+        # 2. 若段长超过 365 天，按 365 天上限增加段数
+        if seg_len > max_segment_days:
+            n_by_samples = max(1, int(math.ceil((t_max - t_min) / max_segment_days)))
+        n_segments = n_by_samples
+        seg_len = (t_max - t_min) / n_segments
+
         cheb_segs = []
-        for i in range(n_segments_per_body):
+        for i in range(n_segments):
             t0 = t_min + i * seg_len
             t1 = t0 + seg_len
             window = [s for s in samples_sorted if t0 <= s[0] <= t1]
@@ -550,7 +659,8 @@ def main() -> None:
     print(f"==> 3/6 fit_chebyshev (degree={args.degree})")
     fitted = fit_chebyshev(clipped, args.degree)
     total_segs = sum(len(b["segments"]) for b in fitted["bodies"])
-    print(f"    总段数：{total_segs}")
+    seg_counts = {b["body_id"]: len(b["segments"]) for b in fitted["bodies"]}
+    print(f"    总段数：{total_segs}（按轨道周期自适应分段：{seg_counts}）")
 
     print("==> 4/6 analyze_error")
     error_report = analyze_error(fitted, spice_data)
@@ -558,6 +668,7 @@ def main() -> None:
     print(f"    整体平均误差（km）：{error_report['overall_mean_error_km']:.3f}")
 
     print("==> 5/6 write_compact_binary")
+    import shutil
     for body in fitted["bodies"]:
         bid = body["body_id"]
         out_path = os.path.join(out_dir, f"ephemeris-{bid}.bin")
@@ -568,6 +679,14 @@ def main() -> None:
         }
         write_compact_binary(body, index, out_path)
         print(f"    写出 {os.path.relpath(out_path, project_root)}")
+        # 同时写出 NAIF ID 文件名副本（修复 E-44）：
+        # orchestrator 运行时按 NAIF ID 请求 ephemeris-<naifId>.bin，
+        # 二进制内部 body_id 仍为简化 ID，由 orchestrator 通过 bodyIdOverride 覆盖。
+        naif_id = SIMPLE_ID_TO_NAIF.get(bid)
+        if naif_id is not None and naif_id != bid:
+            naif_path = os.path.join(out_dir, f"ephemeris-{naif_id}.bin")
+            shutil.copyfile(out_path, naif_path)
+            print(f"    写出 {os.path.relpath(naif_path, project_root)}（NAIF 别名）")
 
     print("==> 6/6 write_report")
     report_path = os.path.join(out_dir, "ephemeris-report.json")
@@ -578,7 +697,8 @@ def main() -> None:
         "spk_source": args.spk or "keplerian-fallback",
         "time_range_mjd": [MJD_1900, MJD_2100],
         "chebyshev_degree": args.degree,
-        "segments_per_body": 4,
+        "segments_per_body": "adaptive (per-orbital-period, max 365 days)",
+        "segment_counts": {str(b["body_id"]): len(b["segments"]) for b in fitted["bodies"]},
         "bodies_written": [b["body_id"] for b in fitted["bodies"]],
         "error_analysis": error_report,
     }

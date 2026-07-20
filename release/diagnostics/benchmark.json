@@ -1,0 +1,280 @@
+{
+  "schema": "solar-system-benchmark/v1",
+  "version": "0.1.0",
+  "generated": "smoke",
+  "tiers": [
+    "ultra",
+    "high",
+    "medium",
+    "low"
+  ],
+  "tier_thresholds": {
+    "fps": {
+      "ultra": 120,
+      "high": 60,
+      "medium": 30,
+      "low": 15
+    },
+    "memory_mb": {
+      "ultra": 2048,
+      "high": 1024,
+      "medium": 512,
+      "low": 256
+    },
+    "draw_calls": {
+      "ultra": 4000,
+      "high": 2000,
+      "medium": 1000,
+      "low": 500
+    },
+    "triangles_m": {
+      "ultra": 50.0,
+      "high": 20.0,
+      "medium": 8.0,
+      "low": 2.0
+    }
+  },
+  "scenes": [
+    {
+      "scene_id": "idle",
+      "name_cn": "静止视角",
+      "description": "静止相机，仅地球+月球+太阳光照",
+      "config": {
+        "bodies": 3,
+        "particles": 0,
+        "lod_bias": 0.0,
+        "shadow_cascades": 1,
+        "vsync": true
+      },
+      "targets": {
+        "ultra": {
+          "min_fps": 120,
+          "max_frame_time_ms": 8.33,
+          "max_memory_mb": 2048,
+          "max_draw_calls": 4000,
+          "max_triangles_m": 50.0,
+          "post_processing": true
+        },
+        "high": {
+          "min_fps": 60,
+          "max_frame_time_ms": 16.67,
+          "max_memory_mb": 1024,
+          "max_draw_calls": 2000,
+          "max_triangles_m": 20.0,
+          "post_processing": true
+        },
+        "medium": {
+          "min_fps": 30,
+          "max_frame_time_ms": 33.33,
+          "max_memory_mb": 512,
+          "max_draw_calls": 1000,
+          "max_triangles_m": 8.0,
+          "post_processing": true
+        },
+        "low": {
+          "min_fps": 15,
+          "max_frame_time_ms": 66.67,
+          "max_memory_mb": 256,
+          "max_draw_calls": 500,
+          "max_triangles_m": 2.0,
+          "post_processing": false
+        }
+      },
+      "duration_seconds": 30,
+      "warmup_seconds": 3
+    },
+    {
+      "scene_id": "cruise",
+      "name_cn": "巡航视角",
+      "description": "太阳系全景巡航，8 大行星 + 主要卫星",
+      "config": {
+        "bodies": 20,
+        "particles": 5000,
+        "lod_bias": 1.0,
+        "shadow_cascades": 2,
+        "vsync": true
+      },
+      "targets": {
+        "ultra": {
+          "min_fps": 120,
+          "max_frame_time_ms": 8.33,
+          "max_memory_mb": 2048,
+          "max_draw_calls": 4000,
+          "max_triangles_m": 50.0,
+          "post_processing": true
+        },
+        "high": {
+          "min_fps": 60,
+          "max_frame_time_ms": 16.67,
+          "max_memory_mb": 1024,
+          "max_draw_calls": 2000,
+          "max_triangles_m": 20.0,
+          "post_processing": true
+        },
+        "medium": {
+          "min_fps": 30,
+          "max_frame_time_ms": 33.33,
+          "max_memory_mb": 512,
+          "max_draw_calls": 1000,
+          "max_triangles_m": 8.0,
+          "post_processing": true
+        },
+        "low": {
+          "min_fps": 15,
+          "max_frame_time_ms": 66.67,
+          "max_memory_mb": 256,
+          "max_draw_calls": 500,
+          "max_triangles_m": 2.0,
+          "post_processing": false
+        }
+      },
+      "duration_seconds": 30,
+      "warmup_seconds": 3
+    },
+    {
+      "scene_id": "terrain",
+      "name_cn": "地表模式",
+      "description": "高 LOD 地形渲染，单行星表面",
+      "config": {
+        "bodies": 1,
+        "particles": 2000,
+        "lod_bias": -1.0,
+        "shadow_cascades": 4,
+        "vsync": true
+      },
+      "targets": {
+        "ultra": {
+          "min_fps": 120,
+          "max_frame_time_ms": 8.33,
+          "max_memory_mb": 2048,
+          "max_draw_calls": 4000,
+          "max_triangles_m": 50.0,
+          "post_processing": true
+        },
+        "high": {
+          "min_fps": 60,
+          "max_frame_time_ms": 16.67,
+          "max_memory_mb": 1024,
+          "max_draw_calls": 2000,
+          "max_triangles_m": 20.0,
+          "post_processing": true
+        },
+        "medium": {
+          "min_fps": 30,
+          "max_frame_time_ms": 33.33,
+          "max_memory_mb": 512,
+          "max_draw_calls": 1000,
+          "max_triangles_m": 8.0,
+          "post_processing": true
+        },
+        "low": {
+          "min_fps": 15,
+          "max_frame_time_ms": 66.67,
+          "max_memory_mb": 256,
+          "max_draw_calls": 500,
+          "max_triangles_m": 2.0,
+          "post_processing": false
+        }
+      },
+      "duration_seconds": 30,
+      "warmup_seconds": 3
+    },
+    {
+      "scene_id": "events",
+      "name_cn": "事件回放",
+      "description": "多粒子特效与时间线事件回放",
+      "config": {
+        "bodies": 10,
+        "particles": 50000,
+        "lod_bias": 0.5,
+        "shadow_cascades": 2,
+        "vsync": true
+      },
+      "targets": {
+        "ultra": {
+          "min_fps": 120,
+          "max_frame_time_ms": 8.33,
+          "max_memory_mb": 2048,
+          "max_draw_calls": 4000,
+          "max_triangles_m": 50.0,
+          "post_processing": true
+        },
+        "high": {
+          "min_fps": 60,
+          "max_frame_time_ms": 16.67,
+          "max_memory_mb": 1024,
+          "max_draw_calls": 2000,
+          "max_triangles_m": 20.0,
+          "post_processing": true
+        },
+        "medium": {
+          "min_fps": 30,
+          "max_frame_time_ms": 33.33,
+          "max_memory_mb": 512,
+          "max_draw_calls": 1000,
+          "max_triangles_m": 8.0,
+          "post_processing": true
+        },
+        "low": {
+          "min_fps": 15,
+          "max_frame_time_ms": 66.67,
+          "max_memory_mb": 256,
+          "max_draw_calls": 500,
+          "max_triangles_m": 2.0,
+          "post_processing": false
+        }
+      },
+      "duration_seconds": 30,
+      "warmup_seconds": 3
+    },
+    {
+      "scene_id": "stress",
+      "name_cn": "压力测试",
+      "description": "全部 297 体 + 最大粒子负载",
+      "config": {
+        "bodies": 297,
+        "particles": 100000,
+        "lod_bias": 2.0,
+        "shadow_cascades": 1,
+        "vsync": true
+      },
+      "targets": {
+        "ultra": {
+          "min_fps": 120,
+          "max_frame_time_ms": 8.33,
+          "max_memory_mb": 2048,
+          "max_draw_calls": 4000,
+          "max_triangles_m": 50.0,
+          "post_processing": true
+        },
+        "high": {
+          "min_fps": 60,
+          "max_frame_time_ms": 16.67,
+          "max_memory_mb": 1024,
+          "max_draw_calls": 2000,
+          "max_triangles_m": 20.0,
+          "post_processing": true
+        },
+        "medium": {
+          "min_fps": 30,
+          "max_frame_time_ms": 33.33,
+          "max_memory_mb": 512,
+          "max_draw_calls": 1000,
+          "max_triangles_m": 8.0,
+          "post_processing": true
+        },
+        "low": {
+          "min_fps": 15,
+          "max_frame_time_ms": 66.67,
+          "max_memory_mb": 256,
+          "max_draw_calls": 500,
+          "max_triangles_m": 2.0,
+          "post_processing": false
+        }
+      },
+      "duration_seconds": 30,
+      "warmup_seconds": 3
+    }
+  ],
+  "total_scenes": 5
+}

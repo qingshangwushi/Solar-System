@@ -41,9 +41,22 @@ export type VertexAttribute = {
 
 export type BufferUsage = 'static' | 'dynamic' | 'stream';
 
+/**
+ * 缓冲区绑定目标类型。
+ *
+ * WebGL2 / OpenGL ES 3.0 规范要求：缓冲区对象在首次绑定到某个 target 时获得
+ * 对应的「类型」，之后不能再绑定到其他 target（否则产生 INVALID_OPERATION）。
+ * 因此 `createBuffer` 必须知道缓冲区的最终用途，以便首次绑定到正确的 target。
+ *
+ * WebGPU 后端不区分 target（通过 binding layout 描述用法），此字段对 WebGPU 无影响。
+ */
+export type BufferTarget = 'vertex' | 'index' | 'uniform';
+
 export type BufferDescriptor = {
   size: number;
   usage: BufferUsage;
+  /** 缓冲区用途；默认 'vertex'。index buffer 必须显式传 'index'，否则 WebGL2 后端会将其绑定为 ARRAY_BUFFER 导致后续无法绑定到 ELEMENT_ARRAY_BUFFER。 */
+  target?: BufferTarget;
   data?: ArrayBuffer;
 };
 
@@ -117,7 +130,7 @@ export type DrawCall = {
 
 export type BufferHandle = { id: string; usage: BufferUsage };
 export type TextureHandle = { id: string; format: TextureFormat };
-export type PipelineHandle = { id: string };
+export type PipelineHandle = { id: string; descriptor?: PipelineDescriptor };
 
 export interface Renderer {
   readonly backend: BackendType;
@@ -144,6 +157,15 @@ export interface Renderer {
   endPass(): void;
 
   submit(): void;
+
+  /**
+   * 设置当前帧的 view-projection 矩阵（列主序 4×4，16 个 float）。
+   *
+   * 编排器每帧调用一次，渲染后端在 draw() 时将其上传到 shader 的
+   * `u_viewProj` uniform，使天体顶点能从模型空间→世界空间→裁剪空间。
+   * 若后端未调用此方法，shader 中 u_viewProj 默认为单位矩阵。
+   */
+  setViewProj(matrix: ArrayLike<number>): void;
 
   readPixels(
     texture: TextureHandle,
@@ -274,19 +296,19 @@ export async function createRenderer(config: RendererConfig): Promise<Renderer> 
 }
 
 export { FloatingOrigin, LocalReferenceFrame, HighLowSplitter } from './floating-origin.js';
-export { BaseSceneNode, PerspectiveCamera, OrthographicCamera, OrbitController, FlyController } from './camera.js';
-export type { CameraType, NavigationMode } from './camera.js';
+export { BaseSceneNode, PerspectiveCamera, OrthographicCamera, OrbitController, FlyController, FollowController, SurfaceLowController, CameraTransition, DynamicClipPlane, PresetViewManager, createMinDistanceCollisionChecker, computeScaleAwareSpeed, computeSmallBodyFactor, DEFAULT_SCALE_AWARE_CONFIG } from './camera.js';
+export type { CameraType, NavigationMode, CameraController, CollisionChecker, ScaleAwareConfig, PresetViewType, PresetView } from './camera.js';
 export { BaseCelestialBody, Sun, Earth, Moon, SunMaterialImpl, EarthMaterialImpl, MoonMaterialImpl, AtmosphereMaterialImpl, SphereGeometry } from './celestial-bodies.js';
 export type { CelestialBodyType } from './celestial-bodies.js';
 export { TileCoordImpl, TileBoundsImpl, TerrainTileImpl, QuadTreeNodeImpl, TerrainLODControllerImpl, AtmosphereRendererImpl, AtmosphereParamsImpl, SurfaceCameraImpl, IrregularBodyRendererImpl, calculateScreenSpaceError } from './terrain.js';
 export type { TileId, TileLevel, TileCoord, TileBounds, Tile, TerrainTile, QuadTreeNode, TerrainLODController, AtmosphereRenderer, AtmosphereParams, ElevationData, TerrainLODConfig } from './terrain.js';
 export { LogarithmicScaleMapping, PiecewiseScaleMapping, ScaleManager, convertUnit, toMeters, fromMeters, formatDistance, formatTime, ASTRONOMICAL_UNIT, LIGHT_YEAR, PARSEC } from './scale-mapping.js';
-export type { DistanceUnit, ScaleConfig, ScaleMapping } from './scale-mapping.js';
+export type { DistanceUnit, ScaleConfig, ScaleMapping, EnhancedModeAnnotation } from './scale-mapping.js';
 export { StarData, AsteroidBeltImpl, KuiperBeltImpl, OortCloudImpl, SolarWindImpl, MagnetosphereImpl, AurorasImpl, TrojanGroupImpl, HeliopauseImpl, CurrentSheetImpl, GalaxyImpl, ExtendedSpaceEnvironmentImpl, createExtendedSpaceEnvironment, drawPointList, ASTEROID_BELT_RADIUS_RANGE, ASTEROID_BELT_THICKNESS, KUIPER_BELT_RADIUS_RANGE, KUIPER_BELT_THICKNESS, OORT_CLOUD_INNER_RADIUS, OORT_CLOUD_OUTER_RADIUS, SOLAR_WIND_SPEED, TROJAN_GROUP_DEFAULT_BODY_ID, TROJAN_GROUP_DEFAULT_ORBIT_RADIUS, TROJAN_GROUP_DEFAULT_COUNT_PER_SWARM, HELIOPAUSE_DEFAULT_RADIUS, HELIOPAUSE_DEFAULT_POINT_COUNT, CURRENT_SHEET_DEFAULT_RADIUS, CURRENT_SHEET_DEFAULT_WAVINESS, CURRENT_SHEET_DEFAULT_RADIAL_SEGMENTS, CURRENT_SHEET_DEFAULT_AZIMUTH_SEGMENTS, GALAXY_DEFAULT_STAR_COUNT, GALAXY_DEFAULT_DISTANCE, GALAXY_DEFAULT_TILT } from './extended-space.js';
 export type { Star, Asteroid, Comet, Particle, ExtendedSpaceEnvironment, StellarBackground, AsteroidBelt, KuiperBelt, OortCloud, SolarWind, Magnetosphere, Auroras, TrojanGroup, Heliopause, CurrentSheet, Galaxy } from './extended-space.js';
 export { EventsServiceImpl, CruiseServiceImpl, PureViewingModeImpl, createEventsService, createCruiseService, createPureViewingMode, EventTimelinePlayer, jumpToEventMax, EVENT_TYPES, CRUISES } from './events-cruises.js';
 export type { EventType, CelestialEvent, EventResult, CruiseWaypoint, Cruise, EventSearchOptions, EventsService, CruiseService, PureViewingMode, CruiseCallbacks, PureViewingCallbacks, TimeSetting, CameraTarget, CameraDirection, LayerVisibility, ResourcePreload, TextCard, ExitState, ScaleMode, EventCameraRecommendation, JumpToEventResult } from './events-cruises.js';
-export { ResourceValidatorImpl, UpdateManagerImpl, TestRunnerImpl, OpsManagerImpl, DefaultTestExecutor, createResourceValidator, createUpdateManager, createTestRunner, createOpsManager } from './productization.js';
+export { ResourceValidatorImpl, UpdateManagerImpl, TestRunnerImpl, OpsManagerImpl, DefaultTestExecutor, PackageInstallerImpl, createResourceValidator, createUpdateManager, createTestRunner, createOpsManager, createPackageInstaller } from './productization.js';
 export { RenderLoop } from './render-loop.js';
 export type {
   RenderLoopBodyId,
@@ -296,7 +318,7 @@ export type {
   RequestAnimationFrameLike,
   CancelAnimationFrameLike,
 } from './render-loop.js';
-export type { ResourceType, ValidationStatus, ResourceValidationResult, ValidationReport, ResourceValidator, UpdateInfo, UpdateStatus, UpdateManager, UpdateManagerConfig, RemoteManifest, TestResult, TestSuiteResult, TestReport, TestEnvironment, TestRunner, TestExecutor, TestExecutorResult, TestRunResult, MaintenanceTask, OperationalStats, HealthCheckResult, OpsManager } from './productization.js';
+export type { ResourceType, ValidationStatus, ResourceValidationResult, ValidationReport, ResourceValidator, UpdateInfo, UpdateStatus, UpdateManager, UpdateManagerConfig, RemoteManifest, TestResult, TestSuiteResult, TestReport, TestEnvironment, TestRunner, TestExecutor, TestExecutorResult, TestRunResult, MaintenanceTask, OperationalStats, HealthCheckResult, OpsManager, PackageInstallStatus, PackageInstallResult, InstalledPackageEntry, PackageInstaller, PackageInstallerConfig } from './productization.js';
 export {
   applyToneMapping,
   applyColorGrading,
