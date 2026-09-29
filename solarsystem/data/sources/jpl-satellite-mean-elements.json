@@ -1,0 +1,29 @@
+{
+  "$comment": "NASA/JPL Solar System Dynamics — 'Planetary Satellite Mean Elements' (mean elements of a precessing ellipse fitted to the numerically integrated orbit). Epoch 2000-01-01.5 TDB. a in km, angles in degrees, P in days. 'frame' is the reference plane of the table entry: 'ecliptic' = J2000 ecliptic, 'laplace' = local Laplace plane (for close-in regular satellites this is close to the planet equatorial plane). Pole R.A./Dec. are the IAU/JPL pole of the parent planet at J2000.",
+  "source": "https://ssd.jpl.nasa.gov/sats/elem/",
+  "reference": "JPL SSD Planetary Satellite Mean Elements (retrieved 2026-09)",
+  "epochJD": 2451545.0,
+  "parentPole": {
+    "earth": { "raDeg": 0.0, "decDeg": 90.0, "note": "Rotational pole of the Earth defines the ecliptic obliquity; equatorial frame used directly." },
+    "mars": { "raDeg": 317.7, "decDeg": 52.9 },
+    "jupiter": { "raDeg": 268.1, "decDeg": 64.5 },
+    "saturn": { "raDeg": 40.59, "decDeg": 83.54, "note": "IAU 2015 pole for Saturn used when a JPL mean-element epoch-2000 pole is not tabulated." },
+    "uranus": { "raDeg": 257.31, "decDeg": -15.18, "note": "IAU 2015 pole for Uranus." },
+    "neptune": { "raDeg": 299.36, "decDeg": 43.46, "note": "IAU 2015 pole for Neptune." },
+    "pluto": { "raDeg": 132.99, "decDeg": -6.16, "note": "IAU 2015 pole for Pluto." }
+  },
+  "satellites": [
+    { "id": "moon", "parentId": "earth", "name": "Moon", "code": 301, "frame": "ecliptic", "aKm": 384400.0, "e": 0.0554, "argPeriapsisDeg": 318.15, "meanAnomalyDeg": 135.27, "inclinationDeg": 5.16, "nodeDeg": 125.08, "periodDays": 27.322 },
+    { "id": "phobos", "parentId": "mars", "name": "Phobos", "code": 401, "frame": "laplace", "aKm": 9375.0, "e": 0.015, "argPeriapsisDeg": 216.3, "meanAnomalyDeg": 189.7, "inclinationDeg": 1.1, "nodeDeg": 169.2, "periodDays": 0.3187 },
+    { "id": "deimos", "parentId": "mars", "name": "Deimos", "code": 402, "frame": "laplace", "aKm": 23457.0, "e": 0.0, "argPeriapsisDeg": 0.0, "meanAnomalyDeg": 205.0, "inclinationDeg": 1.8, "nodeDeg": 54.3, "periodDays": 1.2625 },
+    { "id": "io", "parentId": "jupiter", "name": "Io", "code": 501, "frame": "laplace", "aKm": 421800.0, "e": 0.004, "argPeriapsisDeg": 49.1, "meanAnomalyDeg": 330.9, "inclinationDeg": 0.0, "nodeDeg": 0.0, "periodDays": 1.762732 },
+    { "id": "europa", "parentId": "jupiter", "name": "Europa", "code": 502, "frame": "laplace", "aKm": 671100.0, "e": 0.009, "argPeriapsisDeg": 45.0, "meanAnomalyDeg": 345.4, "inclinationDeg": 0.5, "nodeDeg": 184.0, "periodDays": 3.525463 },
+    { "id": "ganymede", "parentId": "jupiter", "name": "Ganymede", "code": 503, "frame": "laplace", "aKm": 1070400.0, "e": 0.001, "argPeriapsisDeg": 198.3, "meanAnomalyDeg": 324.8, "inclinationDeg": 0.2, "nodeDeg": 58.5, "periodDays": 7.155588 },
+    { "id": "callisto", "parentId": "jupiter", "name": "Callisto", "code": 504, "frame": "laplace", "aKm": 1882700.0, "e": 0.007, "argPeriapsisDeg": 43.8, "meanAnomalyDeg": 87.4, "inclinationDeg": 0.3, "nodeDeg": 309.1, "periodDays": 16.69044 },
+    { "id": "amalthea", "parentId": "jupiter", "name": "Amalthea", "code": 505, "frame": "laplace", "aKm": 181400.0, "e": 0.003, "argPeriapsisDeg": 180.1, "meanAnomalyDeg": 310.6, "inclinationDeg": 0.4, "nodeDeg": 282.9, "periodDays": 0.499918 },
+    { "id": "thebe", "parentId": "jupiter", "name": "Thebe", "code": 514, "frame": "laplace", "aKm": 221900.0, "e": 0.018, "argPeriapsisDeg": 26.6, "meanAnomalyDeg": 182.1, "inclinationDeg": 1.1, "nodeDeg": 340.4, "periodDays": 0.676105 },
+    { "id": "adrastea", "parentId": "jupiter", "name": "Adrastea", "code": 515, "frame": "laplace", "aKm": 129000.0, "e": 0.0, "argPeriapsisDeg": 0.0, "meanAnomalyDeg": 214.5, "inclinationDeg": 0.0, "nodeDeg": 0.0, "periodDays": 0.29826 },
+    { "id": "metis", "parentId": "jupiter", "name": "Metis", "code": 516, "frame": "laplace", "aKm": 128000.0, "e": 0.0, "argPeriapsisDeg": 0.0, "meanAnomalyDeg": 166.0, "inclinationDeg": 0.0, "nodeDeg": 0.0, "periodDays": 0.294779 },
+    { "id": "himalia", "parentId": "jupiter", "name": "Himalia", "code": 506, "frame": "ecliptic", "aKm": 11439000.0, "e": 0.16, "argPeriapsisDeg": 321.1, "meanAnomalyDeg": 78.3, "inclinationDeg": 28.4, "nodeDeg": 64.2, "periodDays": 249.909 }
+  ]
+}
