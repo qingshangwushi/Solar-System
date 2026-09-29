@@ -1,45 +1,7 @@
-# Dependencies
 node_modules/
-
-# Build outputs
-dist/
-build/
 target/
-pkg/
-*.wasm
-
-# Logs
-*.log
-npm-debug.log*
-pnpm-debug.log*
-
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Env
-.env
-.env.local
-
-# Cache
-.cache/
-.turbo/
-.vite/
-.pnpm-store/
-
-# Generated
-packages/astro-core-wasm/pkg/
-release/packages/
-
-# Python cache
 __pycache__/
-*.py[cod]
-
-# Local TLS test certificates (regenerate with release/server/tls/generate-cert.sh)
-release/server/tls/
+.env
+dist/
+*.log
+.DS_Store
