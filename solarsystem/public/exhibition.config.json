@@ -1,0 +1,24 @@
+{
+  "language": "zh-CN",
+  "autoDemo": true,
+  "autoDemoDelaySeconds": 150,
+  "defaultTarget": "sun",
+  "defaultScaleMode": "exhibition",
+  "defaultQuality": "high",
+  "enableScientificMode": true,
+  "enableMinorPlanets": true,
+  "enableStarfield": true,
+  "enableAutoDemo": true,
+  "guidedTourOnIdle": true,
+  "showPerformanceOverlay": false,
+  "uiScale": 1,
+  "reducedMotion": false,
+  "title": {
+    "zh": "太阳系 · 真实三维导览",
+    "en": "Real-Time Solar System"
+  },
+  "subtitle": {
+    "zh": "探索太阳、行星、卫星、小行星以及人类已编目的太阳系世界",
+    "en": "Explore the Sun, planets, moons and catalogued small bodies of our solar system"
+  }
+}
