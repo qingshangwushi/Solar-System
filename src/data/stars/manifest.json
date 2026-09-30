@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "category": "backgroundStar",
+  "frame": "ICRF",
+  "epoch": "J2000 approximate directions",
+  "source": "https://gea.esac.esa.int/archive/",
+  "sourceRevision": "Curated nearby-star seed positions; Gaia DR3 archive references, accessed 2026-09-30",
+  "stars": [
+    {"id":"sirius","name":"Sirius","raDeg":101.287,"decDeg":-16.716,"distanceLy":8.6,"source":"https://gea.esac.esa.int/archive/"},
+    {"id":"alpha-centauri","name":"Alpha Centauri","raDeg":219.902,"decDeg":-60.834,"distanceLy":4.37,"source":"https://gea.esac.esa.int/archive/"},
+    {"id":"proxima-centauri","name":"Proxima Centauri","raDeg":217.429,"decDeg":-62.679,"distanceLy":4.24,"source":"https://gea.esac.esa.int/archive/"},
+    {"id":"vega","name":"Vega","raDeg":279.235,"decDeg":38.784,"distanceLy":25.0,"source":"https://gea.esac.esa.int/archive/"},
+    {"id":"betelgeuse","name":"Betelgeuse","raDeg":88.793,"decDeg":7.407,"distanceLy":548,"source":"https://gea.esac.esa.int/archive/"}
+  ]
+}

@@ -1,0 +1,10 @@
+# Flora conversation executor configuration.
+default_permissions = "flora-library-restricted-2bde4a74ffdb"
+[permissions."flora-library-restricted-2bde4a74ffdb".filesystem]
+":minimal" = "read"
+"/opt/codex" = "read"
+"/root/.codex/skills" = "read"
+"/root/.codex/plugins/cache" = "read"
+"/workspace/scratch/2bde4a74ffdb" = "write"
+[permissions."flora-library-restricted-2bde4a74ffdb".network]
+enabled = true

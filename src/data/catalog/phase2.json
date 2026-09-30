@@ -1,0 +1,476 @@
+{
+  "schemaVersion": 1,
+  "bodies": [
+    {
+      "id": "io",
+      "name": "Io",
+      "aliases": [
+        "Jupiter I"
+      ],
+      "type": "moon",
+      "parentId": "jupiter",
+      "radiusKm": 1821.6,
+      "massKg": 8.9319e+22,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 421700,
+        "eccentricity": 0.0041,
+        "inclinationRad": 0.0007,
+        "longitudeAscendingNodeRad": 0,
+        "argumentOfPeriapsisRad": 0,
+        "meanAnomalyRad": 0,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html",
+      "sourceRevision": "NASA Jupiter Fact Sheet, accessed 2026-09-30; rounded orbit",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "ganymede",
+      "name": "Ganymede",
+      "aliases": [
+        "Jupiter III"
+      ],
+      "type": "moon",
+      "parentId": "jupiter",
+      "radiusKm": 2634.1,
+      "massKg": 1.4819e+23,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 1070400,
+        "eccentricity": 0.0013,
+        "inclinationRad": 0.0035,
+        "longitudeAscendingNodeRad": 0,
+        "argumentOfPeriapsisRad": 0,
+        "meanAnomalyRad": 1.2,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html",
+      "sourceRevision": "NASA Jupiter Fact Sheet, accessed 2026-09-30; rounded orbit",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "callisto",
+      "name": "Callisto",
+      "aliases": [
+        "Jupiter IV"
+      ],
+      "type": "moon",
+      "parentId": "jupiter",
+      "radiusKm": 2410.3,
+      "massKg": 1.0759e+23,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 1882700,
+        "eccentricity": 0.0074,
+        "inclinationRad": 0.0082,
+        "longitudeAscendingNodeRad": 0,
+        "argumentOfPeriapsisRad": 0,
+        "meanAnomalyRad": 2.3,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html",
+      "sourceRevision": "NASA Jupiter Fact Sheet, accessed 2026-09-30; rounded orbit",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "enceladus",
+      "name": "Enceladus",
+      "aliases": [
+        "Saturn II"
+      ],
+      "type": "moon",
+      "parentId": "saturn",
+      "radiusKm": 252.1,
+      "massKg": 1.08e+20,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 237948,
+        "eccentricity": 0.0047,
+        "inclinationRad": 0.0003,
+        "longitudeAscendingNodeRad": 0,
+        "argumentOfPeriapsisRad": 0,
+        "meanAnomalyRad": 0.9,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/saturnfact.html",
+      "sourceRevision": "NASA Saturn Fact Sheet, accessed 2026-09-30; rounded orbit",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "rhea",
+      "name": "Rhea",
+      "aliases": [
+        "Saturn V"
+      ],
+      "type": "moon",
+      "parentId": "saturn",
+      "radiusKm": 763.8,
+      "massKg": 2.3065e+21,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 527108,
+        "eccentricity": 0.001258,
+        "inclinationRad": 0.0045,
+        "longitudeAscendingNodeRad": 0,
+        "argumentOfPeriapsisRad": 0,
+        "meanAnomalyRad": 2.1,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/saturnfact.html",
+      "sourceRevision": "NASA Saturn Fact Sheet, accessed 2026-09-30; rounded orbit",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "iapetus",
+      "name": "Iapetus",
+      "aliases": [
+        "Saturn VIII"
+      ],
+      "type": "moon",
+      "parentId": "saturn",
+      "radiusKm": 734.5,
+      "massKg": 1.8056e+21,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 3560820,
+        "eccentricity": 0.0283,
+        "inclinationRad": 0.264,
+        "longitudeAscendingNodeRad": 0,
+        "argumentOfPeriapsisRad": 0,
+        "meanAnomalyRad": 3.4,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/saturnfact.html",
+      "sourceRevision": "NASA Saturn Fact Sheet, accessed 2026-09-30; rounded orbit",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "triton",
+      "name": "Triton",
+      "aliases": [
+        "Neptune I"
+      ],
+      "type": "moon",
+      "parentId": "neptune",
+      "radiusKm": 1353.4,
+      "massKg": 2.139e+22,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 354759,
+        "eccentricity": 1.6e-05,
+        "inclinationRad": 2.731,
+        "longitudeAscendingNodeRad": 0,
+        "argumentOfPeriapsisRad": 0,
+        "meanAnomalyRad": 3.9,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/neptunefact.html",
+      "sourceRevision": "NASA Neptune Fact Sheet, accessed 2026-09-30; rounded retrograde orbit",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "eris",
+      "name": "Eris",
+      "aliases": [
+        "136199 Eris"
+      ],
+      "type": "dwarfPlanet",
+      "parentId": "sun",
+      "radiusKm": 1163,
+      "massKg": 1.6466e+22,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 10125000000,
+        "eccentricity": 0.4407,
+        "inclinationRad": 0.441,
+        "longitudeAscendingNodeRad": 0.379,
+        "argumentOfPeriapsisRad": 1.307,
+        "meanAnomalyRad": 0.34,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=136199",
+      "sourceRevision": "JPL Small-Body Database, rounded teaching elements",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "67p-churyumov-gerasimenko",
+      "population": "tno",
+      "name": "67P/Churyumov–Gerasimenko",
+      "officialName": "67P/Churyumov–Gerasimenko",
+      "aliases": [
+        "67P",
+        "Churyumov-Gerasimenko",
+        "Rosetta comet"
+      ],
+      "type": "comet",
+      "parentId": "sun",
+      "radiusKm": 2.0,
+      "massKg": 10000000000000.0,
+      "orbit": {
+        "epochJD": 2461000.5,
+        "semiMajorAxisKm": 518000000,
+        "eccentricity": 0.641,
+        "inclinationRad": 0.122,
+        "longitudeAscendingNodeRad": 0.876,
+        "argumentOfPeriapsisRad": 0.224,
+        "meanAnomalyRad": 0.65,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=67P",
+      "sourceRevision": "JPL Small-Body Database, rounded teaching elements",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "1p-halley",
+      "name": "1P/Halley",
+      "officialName": "1P/Halley",
+      "aliases": [
+        "Halley",
+        "Halley's Comet"
+      ],
+      "type": "comet",
+      "parentId": "sun",
+      "radiusKm": 5.5,
+      "massKg": 220000000000000.0,
+      "orbit": {
+        "epochJD": 2461000.5,
+        "semiMajorAxisKm": 2660000000,
+        "eccentricity": 0.967,
+        "inclinationRad": 2.833,
+        "longitudeAscendingNodeRad": 1.015,
+        "argumentOfPeriapsisRad": 1.951,
+        "meanAnomalyRad": 2.6,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1P",
+      "sourceRevision": "JPL Small-Body Database, rounded teaching elements",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "makemake",
+      "name": "Makemake",
+      "officialName": "136472 Makemake",
+      "aliases": [
+        "136472 Makemake",
+        "Makemake"
+      ],
+      "type": "dwarfPlanet",
+      "population": "kuiperBelt",
+      "parentId": "sun",
+      "radiusKm": 715,
+      "massKg": 3.1e+21,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 6795000000,
+        "eccentricity": 0.159,
+        "inclinationRad": 0.5057964172279567,
+        "longitudeAscendingNodeRad": 1.3892820845874863,
+        "argumentOfPeriapsisRad": 5.145230634879284,
+        "meanAnomalyRad": 1.9373154697137058,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html",
+      "sourceRevision": "JPL Small-Body Database, rounded catalog seed values",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "haumea",
+      "name": "Haumea",
+      "officialName": "136108 Haumea",
+      "aliases": [
+        "136108 Haumea",
+        "Haumea"
+      ],
+      "type": "dwarfPlanet",
+      "population": "kuiperBelt",
+      "parentId": "sun",
+      "radiusKm": 816,
+      "massKg": 4e+21,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 6450000000,
+        "eccentricity": 0.195,
+        "inclinationRad": 0.49218284906240095,
+        "longitudeAscendingNodeRad": 2.1327923459370703,
+        "argumentOfPeriapsisRad": 4.1887902047863905,
+        "meanAnomalyRad": 3.804817769347638,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html",
+      "sourceRevision": "JPL Small-Body Database, rounded catalog seed values",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "quaoar",
+      "name": "Quaoar",
+      "officialName": "50000 Quaoar",
+      "aliases": [
+        "50000 Quaoar",
+        "Quaoar"
+      ],
+      "type": "tno",
+      "population": "kuiperBelt",
+      "parentId": "sun",
+      "radiusKm": 555,
+      "massKg": 1.2e+21,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 6537000000,
+        "eccentricity": 0.04,
+        "inclinationRad": 0.13962634015954636,
+        "longitudeAscendingNodeRad": 3.2969269570172886,
+        "argumentOfPeriapsisRad": 2.5656340004316647,
+        "meanAnomalyRad": 3.141592653589793,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html",
+      "sourceRevision": "JPL Small-Body Database, rounded catalog seed values",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "sedna",
+      "name": "Sedna",
+      "officialName": "90377 Sedna",
+      "aliases": [
+        "90377 Sedna",
+        "Sedna"
+      ],
+      "type": "tno",
+      "population": "scatteredDisk",
+      "parentId": "sun",
+      "radiusKm": 500,
+      "massKg": 1e+21,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 75700000000,
+        "eccentricity": 0.855,
+        "inclinationRad": 0.2076941809873252,
+        "longitudeAscendingNodeRad": 2.522000769131806,
+        "argumentOfPeriapsisRad": 5.436700619962337,
+        "meanAnomalyRad": 0.012217304763960306,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html",
+      "sourceRevision": "JPL Small-Body Database, rounded catalog seed values",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    },
+    {
+      "id": "apophis",
+      "name": "Apophis",
+      "officialName": "99942 Apophis",
+      "aliases": [
+        "99942 Apophis",
+        "Apophis"
+      ],
+      "type": "asteroid",
+      "population": "nearEarth",
+      "parentId": "sun",
+      "radiusKm": 0.17,
+      "massKg": 61000000000.0,
+      "orbit": {
+        "epochJD": 2451545,
+        "semiMajorAxisKm": 137900000,
+        "eccentricity": 0.191,
+        "inclinationRad": 0.0582939970166106,
+        "longitudeAscendingNodeRad": 3.5674529910764097,
+        "argumentOfPeriapsisRad": 2.2060961745208325,
+        "meanAnomalyRad": 5.585053606381854,
+        "elementFrame": "ECLIPJ2000"
+      },
+      "source": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html",
+      "sourceRevision": "JPL Small-Body Database, rounded catalog seed values",
+      "sourceUpdatedAt": "2026-09-30",
+      "units": {
+        "distance": "km",
+        "mass": "kg",
+        "angles": "rad",
+        "epoch": "JD TDB"
+      }
+    }
+  ]
+}

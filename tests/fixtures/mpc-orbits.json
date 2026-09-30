@@ -1,0 +1,9 @@
+{
+  "source": "https://minorplanetcenter.net/iau/MPCORB/",
+  "revision": "MPCORB fixture 2026-09-30",
+  "updatedAt": "2026-09-30",
+  "records": [
+    {"designation":"1","name":"Ceres","epochJD":2461000.5,"semiMajorAxisAu":2.7675,"eccentricity":0.0758,"inclinationDeg":10.593,"longitudeAscendingNodeDeg":80.305,"argumentOfPeriapsisDeg":73.597,"meanAnomalyDeg":95.989,"radiusKm":469.7,"massKg":9.3835e20},
+    {"designation":"4","name":"Vesta","epochJD":2461000.5,"semiMajorAxisAu":2.3615,"eccentricity":0.0887,"inclinationDeg":7.14,"longitudeAscendingNodeDeg":103.85,"argumentOfPeriapsisDeg":150.99,"meanAnomalyDeg":20.86,"radiusKm":262.7,"massKg":2.59e20}
+  ]
+}
