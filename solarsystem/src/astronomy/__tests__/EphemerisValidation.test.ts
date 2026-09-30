@@ -114,12 +114,13 @@ describe('Mode B Keplerian planets vs Mode A ephemeris', () => {
 
   it('agrees in direction to better than 0.2 degrees for the Earth', () => {
     // The Earth entry of the JPL table is the Earth/Moon barycenter. The Kepler
-    // path removes the Moon with the Moon's own mean elements, whose phase is only
-    // good to a few degrees, so the residual (<= 0.15 deg) is expected and is
-    // exactly why the application renders the Earth through Mode A.
+    // path removes the Moon with the Moon's own mean elements. The split uses the
+    // mass-ratio coefficient μ/(1+μ); using the Moon's 1/(1+μ) instead misplaces the
+    // Earth by almost one lunar distance, which showed up here as a 0.147° residual
+    // (it is 0.004° with the correct coefficient). The bound below guards it.
     const earth = comparisons.filter((entry) => entry.planet === 'earth')
     const worst = earth.reduce((a, b) => (b.angularErrorDeg > a.angularErrorDeg ? b : a))
-    expect(worst.angularErrorDeg).toBeLessThan(0.2)
+    expect(worst.angularErrorDeg).toBeLessThan(0.02)
   })
 
   it('places the Earth at 1 au with a sub-percent error', () => {

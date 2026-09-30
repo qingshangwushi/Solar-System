@@ -61,6 +61,14 @@ export function PerformanceOverlay({ t, snapshot, history }: PerformanceOverlayP
         <b>{snapshot.geometryMb} MB</b>
       </div>
       <div className="perf__row">
+        <span>textures</span>
+        <b>{snapshot.textureCount}</b>
+      </div>
+      <div className="perf__row">
+        <span>geometries</span>
+        <b>{snapshot.geometryCount}</b>
+      </div>
+      <div className="perf__row">
         <span>worker</span>
         <b>{snapshot.workerTimeMs.toFixed(2)} ms</b>
       </div>

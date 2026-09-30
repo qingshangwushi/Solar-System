@@ -74,6 +74,15 @@ export class CameraController {
   mode: CameraMode = 'orbit'
   trackedId: string | null = null
 
+  /**
+   * Targets that are not part of the catalogued-body resolver — currently the
+   * minor-body cloud, whose positions arrive from the orbit worker. The engine
+   * refreshes the entry for the selected object every frame, so a fly-to to an
+   * asteroid follows it exactly like a fly-to to a planet instead of collapsing
+   * onto the origin (P0-4).
+   */
+  readonly externalTargets = new Map<string, FlyToTarget>()
+
   /** Position of the virtual camera in the warped render space (float64 precision). */
   readonly absolutePosition = new Vector3()
   private readonly lookAt = new Vector3()
@@ -99,6 +108,9 @@ export class CameraController {
   private trackedRadius = 0
   private overviewDistance = 8000
   private flyToCompleted: ((id: string) => void) | null = null
+  private readonly previousTargetPosition = new Vector3()
+  private readonly targetDelta = new Vector3()
+  private hasTargetHistory = false
 
   private readonly keys = new Set<string>()
 
@@ -178,6 +190,7 @@ export class CameraController {
     if (changed) {
       const radius = frameRadiusUnits ?? state.radiusUnits
       this.distance = Math.max(this.minimumDistance(radius), this.defaultDistance(radius))
+      this.hasTargetHistory = false
     }
   }
 
@@ -281,6 +294,9 @@ export class CameraController {
     this.trackedId = state.id
     this.trackedRadius = state.radiusUnits
     this.distance = desiredDistance
+    // A new target means the previous position is not a valid reference for the
+    // rigid `follow` translation.
+    this.hasTargetHistory = false
   }
 
   cancelFlyTo(): void {
@@ -291,6 +307,7 @@ export class CameraController {
   snapTo(state: BodyState | null, distance?: number): void {
     if (!state) return
     this.trackedId = state.id
+    this.hasTargetHistory = false
     if (distance !== undefined) this.distance = distance
   }
 
@@ -340,14 +357,32 @@ export class CameraController {
     return this.keys
   }
 
+  /** Resolves a tracking id against the catalogued bodies, then the external targets. */
+  private resolveTarget(id: string | null, states: Map<string, BodyState>): FlyToTarget | undefined {
+    if (!id) return undefined
+    return states.get(id) ?? this.externalTargets.get(id)
+  }
+
   /** Advances the camera. `states` provides the tracked body's moving position. */
   update(deltaSeconds: number, states: Map<string, BodyState>): void {
-    const targetState = this.trackedId ? states.get(this.trackedId) : undefined
+    const targetState = this.resolveTarget(this.trackedId, states)
     if (targetState) {
       this.trackedRadius = targetState.radiusUnits
       this.targetPosition.set(targetState.absoluteUnits.x, targetState.absoluteUnits.y, targetState.absoluteUnits.z)
+      // `follow` is a rigid lock: the camera is translated by exactly the same
+      // vector as the body, so the viewing geometry does not drift while the target
+      // moves. `orbit` keeps the damped revolve instead (it deliberately lags a
+      // little, which reads as "the camera stays where the visitor put it").
+      if (this.mode === 'follow' && this.hasTargetHistory && !this.flyToState) {
+        this.targetDelta.subVectors(this.targetPosition, this.previousTargetPosition)
+        this.absolutePosition.add(this.targetDelta)
+        this.lookAt.add(this.targetDelta)
+      }
+      this.previousTargetPosition.copy(this.targetPosition)
+      this.hasTargetHistory = true
     } else {
       this.targetPosition.copy(ORIGIN)
+      this.hasTargetHistory = false
     }
 
     if (this.flyToState) {
@@ -388,8 +423,14 @@ export class CameraController {
   }
 
   private updateFree(deltaSeconds: number): void {
+    // The rate scales with the distance to what the visitor is looking at, not with
+    // the heliocentric distance: 10 km/s while parked next to a moon, up to
+    // 1,000,000 km/s when crossing the outer system (specification §23).
+    const referenceDistance = this.trackedId
+      ? this.absolutePosition.distanceTo(this.targetPosition)
+      : this.freePosition.length()
     const speed = MathUtils.clamp(
-      this.options.minSpeedUnitsPerSecond + this.freePosition.length() * 0.6,
+      this.options.minSpeedUnitsPerSecond + referenceDistance * 0.6,
       this.options.minSpeedUnitsPerSecond,
       this.options.maxSpeedUnitsPerSecond,
     ) * this.freeSpeedBoost
@@ -430,7 +471,7 @@ export class CameraController {
         ? MathUtils.smoothstep(rawProgress / 0.18, 0, 1) * 0.16
         : 0.16 + MathUtils.smoothstep((rawProgress - 0.18) / 0.82, 0, 1) * 0.84
 
-    const targetState = states.get(state.targetId)
+    const targetState = this.resolveTarget(state.targetId, states)
     if (!targetState) {
       this.flyToState = null
       return

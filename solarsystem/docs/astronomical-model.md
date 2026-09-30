@@ -114,7 +114,7 @@ Moon  = EMB + μ · r_moon / (1 + μ)
 - 自转**速率**与**极轴指向**是真实数据：速率来自 NASA/NSSDC 恒星自转周期（`siderealRotationPeriodHours`，负值表示逆行），极轴来自 IAU WGCCRE / NAIF（`data/sources/planet-orientation.json` 的 `poleRaDeg/poleDecDeg`）。
 - 自转**相位**是约定值：`rotationPhaseSource: "convention-zero-at-j2000"`，即 J2000 时本初子午线相位为 0。原因：完整 IAU W0 多项式未随离线包分发。`rotationPhaseRad` 用 `phase(0) + direction·(2π/|P|)·t`。
 - 太阳自转用 `SUN_ROTATION`：周期 609.12 h（Carrington 平均高纬速率），极轴 R.A. 286.13°、Dec. 63.87°。
-- 实现：`bodyOrientationBodyToEcliptic` 先由极轴构造赤道帧（`planetEquatorialFrame`，含 EQJ→黄道变换），再绕天体 z 轴（极轴）旋转相位。`BodyVisual` 把该矩阵（经 `eclipticMat3ToScene`）转成四元数施加到 `frame`。
+- 实现：`bodyOrientationBodyToEcliptic` 先由极轴构造赤道帧（`planetEquatorialFrame`，含 EQJ→黄道变换），再绕天体 z 轴（极轴）旋转相位。`BodyVisual` 把该矩阵左乘 `ECLIPTIC_TO_SCENE`（`bodyFrameMat3ToScene`）后转成四元数施加到 `frame`，其 +Z 即 IAU 极轴在场景帧中的方向。
 - 信息面板对 `convention-zero-at-j2000` 明确说明：“自转相位：以 J2000 为约定零点；自转速率与极轴指向为真实数据。”
 
 ## 6. 验证方法与实测误差
@@ -134,7 +134,7 @@ Moon  = EMB + μ · r_moon / (1 + μ)
 Kepler (Mode B) vs ephemeris (Mode A), 1900-2049
 mercury  worst angular 0.0079°  worst radial 0.0024 %
 venus    worst angular 0.0035°  worst radial 0.0032 %
-earth    worst angular 0.1470°  worst radial 0.2688 %
+earth    worst angular 0.0037°  worst radial 0.0014 %
 mars     worst angular 0.0158°  worst radial 0.0089 %
 jupiter  worst angular 0.0851°  worst radial 0.0685 %
 saturn   worst angular 0.1534°  worst radial 0.1253 %
@@ -142,7 +142,9 @@ uranus   worst angular 0.0229°  worst radial 0.0403 %
 neptune  worst angular 0.0152°  worst radial 0.0187 %
 ```
 
-断言（全部通过）：方向 < 0.4°、径向 < 0.5%、内行星（水/金/火）方向 < 0.05°、地球方向 < 0.2°、地球半径在 0.98–1.02 AU、木星历表半径 4.9–5.5 AU、土星 9–10.1 AU。
+断言（全部通过）：方向 < 0.4°、径向 < 0.5%、内行星（水/金/火）方向 < 0.05°、地球方向 < 0.02°、地球半径在 0.98–1.02 AU、木星历表半径 4.9–5.5 AU、土星 9–10.1 AU。
+
+地月质心分裂的系数为 `μ/(1+μ)`（μ = 月球/地球质量比）。早前误用 `1/(1+μ)` 使地球方向残差达 0.1470°、径向 0.2688 %；修正后为 0.0037° / 0.0014 %。
 
 ### 月球几何与精度
 

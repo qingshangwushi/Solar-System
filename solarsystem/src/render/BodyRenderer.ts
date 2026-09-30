@@ -39,6 +39,7 @@ import {
 import {
   ATMOSPHERE_FRAGMENT_SHADER,
   ATMOSPHERE_VERTEX_SHADER,
+  CLOUD_FRAGMENT_SHADER,
   GLOW_FRAGMENT_SHADER,
   GLOW_VERTEX_SHADER,
   PLANET_FRAGMENT_SHADER,
@@ -50,7 +51,7 @@ import type { CelestialBody } from '../types/catalog'
 import type { BodyState } from '../engine/PositionResolver'
 import type { ResolvedMaterialMaps } from '../data/TextureProvider'
 import type { QualityLevel } from '../engine/QualityController'
-import { ECLIPTIC_TO_SCENE, SCENE_TO_ECLIPTIC, multiplyMat3, type Mat3 } from '../astronomy/Coordinates'
+import { ECLIPTIC_TO_SCENE, multiplyMat3, type Mat3 } from '../astronomy/Coordinates'
 import { bodyOrientationBodyToEcliptic } from '../astronomy/Rotation'
 
 export type LodTier = 'point' | 'low' | 'standard' | 'close'
@@ -113,9 +114,17 @@ function mat3ToQuaternion(matrix: Mat3, target: Quaternion): Quaternion {
   return target.setFromRotationMatrix(four as unknown as Matrix4)
 }
 
-/** Ecliptic-frame rotation expressed in the scene frame: S · M · S⁻¹. */
-export function eclipticMat3ToScene(matrix: Mat3): Mat3 {
-  return multiplyMat3(multiplyMat3(ECLIPTIC_TO_SCENE, matrix), SCENE_TO_ECLIPTIC)
+/**
+ * A body-frame rotation expressed in the scene frame: `S · M`.
+ *
+ * The engine keeps every position in the render (scene) frame — `ScaleModel`
+ * applies `ECLIPTIC_TO_SCENE` — so a rotation authored in the ecliptic frame only
+ * has to be pre-multiplied by the frame change. Conjugating it (`S · M · S⁻¹`, as
+ * the first implementation did) maps the pole into the equatorial plane and makes
+ * it drift with the rotation phase; see P0-3 of docs/e2e-verification-report.md.
+ */
+export function bodyFrameMat3ToScene(matrix: Mat3): Mat3 {
+  return multiplyMat3(ECLIPTIC_TO_SCENE, matrix)
 }
 
 export class BodyVisual {
@@ -140,6 +149,7 @@ export class BodyVisual {
   private sphereGeometry: SphereGeometry | null = null
   private readonly orientation = new Quaternion()
   private texturesApplied = false
+  private cloudTextureApplied = false
   private textureRequested = false
   private currentTier: LodTier = 'point'
   /**
@@ -174,6 +184,22 @@ export class BodyVisual {
     return this.texturesApplied
   }
 
+  /**
+   * True when the visible surface is the locally generated procedural map rather
+   * than published imagery — either because the catalog declares no map at all or
+   * because every declared map failed to load. The information panel uses this to
+   * disclose the substitution instead of passing the illustration off as data.
+   */
+  get hasProceduralSurface(): boolean {
+    if (!this.texturesApplied) return !this.body.textures?.map
+    return this.lastMaps?.procedural ?? false
+  }
+
+  /** True when the cloud layer has a real cloud map bound to it. */
+  get hasCloudMap(): boolean {
+    return this.cloudTextureApplied
+  }
+
   /** Diagnostics: the material state of the surface mesh. */
   get materialDiagnostics(): { tier: LodTier; meshVisible: boolean; hasMap: boolean; hasNormal: boolean; hasNight: boolean } {
     const material = this.material as ShaderMaterial | null
@@ -206,7 +232,7 @@ export class BodyVisual {
       },
       options.nowSecondsSinceJ2000,
     )
-    mat3ToQuaternion(eclipticMat3ToScene(orientationFrame), this.orientation)
+    mat3ToQuaternion(bodyFrameMat3ToScene(orientationFrame), this.orientation)
     this.frame.quaternion.copy(this.orientation)
 
     const shaderMaterial = this.material as ShaderMaterial
@@ -223,7 +249,11 @@ export class BodyVisual {
       atmosphereMaterial.uniforms.uSunDirection.value.copy(options.sunDirectionScene)
     }
     if (this.clouds) {
-      this.clouds.visible = tier === 'close' && this.texturesApplied
+      // A cloud shell without its alpha map would render as an opaque white ball,
+      // so it only appears once the real cloud texture has been applied.
+      this.clouds.visible = tier === 'close' && this.cloudTextureApplied
+      const cloudMaterial = this.clouds.material as ShaderMaterial
+      cloudMaterial.uniforms?.uSunDirection?.value.copy(options.sunDirectionScene)
       this.clouds.rotation.y += 0.00002
     }
     if (this.rings) {
@@ -311,7 +341,19 @@ export class BodyVisual {
 
     if (this.body.textures?.clouds) {
       const cloudGeometry = new SphereGeometry(1, segments.width, segments.height)
-      const cloudMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false })
+      // The cloud deck is lit, not a white unlit shell: without the solar term the
+      // night side of the planet is covered by glowing clouds (P0-2).
+      const cloudMaterial = new ShaderMaterial({
+        vertexShader: PLANET_VERTEX_SHADER,
+        fragmentShader: CLOUD_FRAGMENT_SHADER,
+        uniforms: {
+          uMap: { value: getNeutralMap() },
+          uSunDirection: { value: new Vector3(1, 0, 0) },
+          uOpacity: { value: 0.62 },
+        },
+        transparent: true,
+        depthWrite: false,
+      })
       this.clouds = new Mesh(cloudGeometry, cloudMaterial)
       this.clouds.scale.setScalar(1.012)
       this.clouds.rotation.x = Math.PI / 2
@@ -412,9 +454,10 @@ export class BodyVisual {
       material.uniforms.uHasSpecularMap.value = maps.specularMap ? 1 : 0
     }
     if (this.clouds && maps.clouds) {
-      const cloudMaterial = this.clouds.material as MeshBasicMaterial
-      cloudMaterial.map = maps.clouds as Texture
+      const cloudMaterial = this.clouds.material as ShaderMaterial
+      if (cloudMaterial.uniforms?.uMap) cloudMaterial.uniforms.uMap.value = maps.clouds as Texture
       cloudMaterial.needsUpdate = true
+      this.cloudTextureApplied = true
     }
     if (this.rings && maps.ringMap) {
       const ringMaterial = this.rings.material as MeshBasicMaterial
@@ -428,9 +471,18 @@ export class BodyVisual {
     this.texturesApplied = true
   }
 
-  /** Frees GPU resources. Every geometry/material created above is disposed here. */
+  /**
+   * Frees GPU resources and detaches the visual from the scene graph.
+   *
+   * Removing the group from its parent matters: the engine drops every visual and
+   * rebuilds them after a WebGL context restore, and a `dispose()` that only cleared
+   * `frame.children` left 178 orphaned Groups behind on every restore (P1-3).
+   */
   dispose(): void {
     this.disposeMeshes()
+    this.frame.removeFromParent()
+    this.group.removeFromParent()
+    this.group.clear()
   }
 
   private disposeMeshes(): void {
@@ -449,6 +501,7 @@ export class BodyVisual {
     // `texturesApplied` is reset because the material is new; `lastMaps` is kept so
     // the rebuild path can restore the surface map.
     this.texturesApplied = false
+    this.cloudTextureApplied = false
   }
 }
 

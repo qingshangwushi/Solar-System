@@ -4,7 +4,7 @@
 
 ## 1. 规模数据（可复算）
 
-运行 `node -e` 读取 `public/data/catalog/catalog.json` 得到：
+运行 `node -e` 读取 `public/data/catalog/manifest.json` 的 `catalogFile` 所指的版本化目录（当前 `catalog-v20260929.json`）得到：
 
 | 量 | 值 |
 | --- | --- |
@@ -60,7 +60,7 @@ export const QUALITY_PROFILES = {
 
 球体分段随画质档：ultra 128×96、high 96×64、medium 64×48、performance 32×24。行星环分段在 `low` 档用 48、否则 128。大气壳由 `ATMOSPHERES` 表按天体 id 配置（金星、地球、火星、木星、土星、天王星、海王星、Titan、Triton、冥王星）。
 
-贴图在物体首次达到“投影半径 ≥ 5 px”时按需请求一次（`SolarSystemEngine.frameStep`），随后 `BodyVisual.applyTextures`。
+贴图在物体首次达到“投影半径 ≥ 5 px”时按需请求一次（`SolarSystemEngine.frameStep`），随后 `BodyVisual.applyTextures`。请求的是**离线包内的 2k（2048 px）资源**，画质档位决定加载时的分辨率层级（`TEXTURE_MAX_WIDTH`）：`ultra`/`high` 保持 2048 px，`medium` 降采样到 1024 px，`performance` 降采样到 512 px。声明的地图缺失或请求/解码失败时，回退为由天体 id 哈希生成的确定性程序化贴图，信息面板标注“程序化贴图”，因此贴图失败不会阻塞渲染，也不会被当作实拍影像展示。
 
 `point` 档对象由标签层标识身份，球体隐藏以免遮挡标注。
 
@@ -130,4 +130,6 @@ export const QUALITY_PROFILES = {
 
 - 代码实现的帧率目标是 **58 FPS 升档线 / 40 FPS 降档线**（非 60/30；极低帧率直降 performance 档）。系统没有硬性“30 FPS 下限”常数。
 - 真实硬件的 FPS、draw call、三角形数随 GPU、分辨率、像素比与当前视图而变，属环境相关，本文不给出具体实测值。
-- 可复算的规模数字只有第 1 节所列的目录计数与缓冲大小，以及 `npm test` 的用例数（当前 4 个文件、60 个用例通过）。
+- 可复算的规模数字：第 1 节所列的目录计数与缓冲大小、第 9 节列出的传播吞吐，以及 `npm test` 的用例数（当前 9 个文件、115 个用例通过，其中天文 5 个文件、UI/状态 4 个文件）。
+- **传播吞吐基线**（`src/astronomy/__tests__/Performance.test.ts`，`npm test` 会打印）：在**合成**元素数组（真实 stride-8 布局、物理合法根数，仅种群合成）上对 1 000 / 10 000 / 100 000 / 500 000 个天体各跑一遍完整开普勒传播。本机实测：500 000 个天体 `propagateMinorBodyKm` 约 105–115 ms（约 210–230 ns/对象，≈4.4–4.7×10⁶ 对象/秒）；测试断言每对象 < 25 µs、各规模总时长上限（1k 250 ms、10k 400 ms、100k 1.5 s、500k 6 s），作为复杂度回归（例如意外 O(n²)）的护栏。测试文件整体运行 < 1 s。
+- **科学验证方法**：`npm run verify:ephemeris` 既跑内部 Mode A–Mode B 回归比较（含月球），也把两者分别与外部基准 `data/sources/horizons-golden.json`（JPL Horizons 日心黄道 J2000 位置/速度）比较并打印误差；基准缺失时打印 `SKIPPED (no external reference)`。生成与校验细节见 `docs/data-sources.md` 第 8.1 节。

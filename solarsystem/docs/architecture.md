@@ -52,7 +52,7 @@ flowchart TD
 | 文件 | 职责 |
 | --- | --- |
 | `ScaleModel.ts` | 三种尺度模式、`createScaleTransform`、`satelliteSystemFactor`、`formatMagnification`、`SCALE_MODES` 文案 |
-| `CatalogLoader.ts` | 一次性加载 `manifest.json` → `catalog.json` → `planet-elements.json` → 恒星 → 小天体，按真实完成度上报进度，小天体/恒星失败可降级 |
+| `CatalogLoader.ts` | 一次性加载 `manifest.json` → `manifest.catalogFile`（版本化目录，如 `catalog-v20260929.json`）→ `planet-elements.json` → 恒星 → 小天体，按真实完成度上报进度，小天体/恒星失败可降级 |
 | `ConfigLoader.ts` | `DEFAULT_EXHIBITION_CONFIG`、`mergeExhibitionConfig`（类型校验）、`loadExhibitionConfig`（失败不致命）、`dataUrl` |
 | `MinorBodyStore.ts` | 小天体扁平类型化数组：`elements`（Float32，stride 8）、`records`、`selectIndices`、`loadMinorBodies` |
 | `SearchIndex.ts` | MiniSearch 索引，覆盖名称/中文名/官方名/别名，含 `search` 与 `autoSuggest` |
@@ -215,7 +215,7 @@ solarsystem/
 │   ├── favicon.svg
 │   ├── icons.svg
 │   └── data/
-│       ├── catalog/        # catalog.json / planet-elements.json / minor-bodies.{json,bin} / manifest.json
+│       ├── catalog/        # catalog-vYYYYMMDD.json（manifest.catalogFile 指向） / planet-elements.json / minor-bodies.{json,bin} / manifest.json
 │       ├── stars/          # stars.bin / stars.json
 │       └── textures/       # 行星表面贴图 + textures.json
 ├── scripts/

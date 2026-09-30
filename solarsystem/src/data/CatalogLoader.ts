@@ -75,7 +75,11 @@ export async function loadCatalog(options: {
   done('manifest', LOAD_STEPS[0].zh, LOAD_STEPS[0].en)
 
   report('catalog', LOAD_STEPS[1].zh, LOAD_STEPS[1].en)
-  const catalog = await fetchJson<SolarSystemCatalog>('data/catalog/catalog.json')
+  // The manifest names the versioned catalog artefact (`catalog-vYYYYMMDD.json`),
+  // so a data refresh ships a new immutable file instead of overwriting one that a
+  // visitor's browser may still have cached (specification §6/§48).
+  const catalogFile = manifest.catalogFile ?? 'catalog.json'
+  const catalog = await fetchJson<SolarSystemCatalog>(`data/catalog/${catalogFile}`)
   const bodies = catalog.bodies
   const bodyById = new Map(bodies.map((body) => [body.id, body]))
   const childrenByParent = new Map<string, CelestialBody[]>()

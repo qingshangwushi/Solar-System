@@ -4,10 +4,15 @@
  * Behaviour required by the project:
  *  - Nothing is downloaded at start-up. A surface map is requested the first time
  *    a body reaches the texture LOD level, and only that body's maps are fetched.
- *  - The quality level selects the resolution tier (ultra prefers a 4k asset and
- *    falls back to the 2k asset, exactly the "high -> medium -> low" degradation
- *    chain the specification asks for). GPU mipmapping provides the in-between
- *    levels for free.
+ *  - Catalog paths are relative to `public/data/` (the same root as `catalog/`),
+ *    so they are resolved through `texturePath()` before `dataUrl()`. Getting this
+ *    wrong made every planetary map silently fall back to the procedural canvas
+ *    (P0-1 of docs/e2e-verification-report.md).
+ *  - The quality level selects the resolution tier: the bundled 2k maps are used at
+ *    native resolution on `ultra`/`high` and downsampled to 1024 px / 512 px on
+ *    `medium` / `performance`. That is a real "high -> medium -> low" degradation
+ *    chain for both GPU memory and the sampling cost, and it is observable in the
+ *    renderer's texture-memory statistic.
  *  - When no published map exists for a body (for example Eris or Titan), a
  *    deterministic procedural map is generated locally and the body is flagged as
  *    "procedural surface" in the information panel — nothing is passed off as
@@ -29,6 +34,24 @@ import { dataUrl } from './ConfigLoader'
 import type { QualityLevel } from '../engine/QualityController'
 
 export type TextureChannel = 'map' | 'nightMap' | 'clouds' | 'normalMap' | 'specularMap' | 'ringMap'
+
+/**
+ * Widest decoded map per quality level. The offline bundle ships 2k (2048 px)
+ * imagery, so `ultra` and `high` keep the published resolution while the two lower
+ * levels genuinely halve and quarter it.
+ */
+const TEXTURE_MAX_WIDTH: Record<QualityLevel, number> = {
+  ultra: 2048,
+  high: 2048,
+  medium: 1024,
+  performance: 512,
+}
+
+/** Catalog texture paths are relative to `public/data/`. */
+export function texturePath(relativePath: string): string {
+  const trimmed = relativePath.replace(/^\/+/, '')
+  return trimmed.startsWith('data/') ? trimmed : `data/${trimmed}`
+}
 
 export interface ResolvedMaterialMaps {
   map?: Texture
@@ -108,61 +131,78 @@ export class TextureProvider {
     return resolved
   }
 
-  /** Resolution tiers, most detailed first; the first reachable file wins. */
-  private candidatePaths(relativePath: string): string[] {
-    if (this.quality !== 'ultra') return [relativePath]
-    // Optional 4k assets sit next to their 2k counterparts; when they are absent
-    // the loader automatically falls back to the bundled 2k map.
-    const slash = relativePath.lastIndexOf('/')
-    const directory = slash >= 0 ? relativePath.slice(0, slash + 1) : ''
-    const file = slash >= 0 ? relativePath.slice(slash + 1) : relativePath
-    return [`${directory}4k-${file}`, `${directory}4k_${file}`, relativePath]
-  }
-
+  /**
+   * Loads one declared map at the active resolution tier. Colour maps decode as
+   * sRGB, normal/specular maps stay linear.
+   */
   private async loadTexture(relativePath: string, type: string, colorData = false): Promise<Texture | null> {
-    for (const candidate of this.candidatePaths(relativePath)) {
-      const cached = this.cache.get(candidate)
-      if (cached) return cached
-      const pending = this.pending.get(candidate)
-      if (pending) {
-        const resolved = await pending
-        if (resolved) return resolved
-        continue
-      }
-      const promise = this.loader
-        .loadAsync(dataUrl(candidate))
-        .then((texture) => {
-          // Normal/specular/roughness maps carry linear data, colour maps are sRGB.
-          texture.colorSpace = colorData ? NoColorSpace : SRGBColorSpace
-          texture.anisotropy = 4
-          texture.wrapS = RepeatWrapping
-          texture.wrapT = RepeatWrapping
-          texture.minFilter = LinearMipmapLinearFilter
-          texture.generateMipmaps = true
-          this.remember(candidate, texture)
-          return texture
-        })
-        .catch(() => null)
-        .finally(() => {
-          this.pending.delete(candidate)
-        })
-      this.pending.set(candidate, promise)
-      const resolved = await promise
-      if (resolved) return resolved
-      void type
-    }
-    return null
+    const cap = TEXTURE_MAX_WIDTH[this.quality]
+    const key = `${relativePath}@${cap}`
+    const cached = this.cache.get(key)
+    if (cached) return cached
+    const pending = this.pending.get(key)
+    if (pending) return pending
+
+    const promise = this.loader
+      .loadAsync(dataUrl(texturePath(relativePath)))
+      .then((texture) => {
+        const resolved = this.applyResolutionTier(texture, cap)
+        // Normal/specular/roughness maps carry linear data, colour maps are sRGB.
+        resolved.colorSpace = colorData ? NoColorSpace : SRGBColorSpace
+        resolved.anisotropy = 4
+        resolved.wrapS = RepeatWrapping
+        resolved.wrapT = RepeatWrapping
+        resolved.minFilter = LinearMipmapLinearFilter
+        resolved.generateMipmaps = true
+        this.cache.set(key, resolved)
+        this.evictOverflow()
+        return resolved
+      })
+      .catch(() => {
+        console.warn(`texture unavailable: ${relativePath} (${type})`)
+        return null
+      })
+      .finally(() => {
+        this.pending.delete(key)
+      })
+    this.pending.set(key, promise)
+    return promise
   }
 
-  private remember(key: string, texture: Texture): void {
-    this.cache.set(key, texture)
-    if (this.cache.size <= this.maxCacheEntries) return
-    // Evict the oldest entry that is not currently being rendered.
-    const oldestKey = this.cache.keys().next().value
-    if (oldestKey === undefined) return
-    const evicted = this.cache.get(oldestKey)
-    this.cache.delete(oldestKey)
-    evicted?.dispose()
+  /**
+   * Applies the resolution tier. Downsampling happens once, at load time, through a
+   * canvas — this is what makes the quality level's texture budget real instead of
+   * a cosmetic label.
+   */
+  private applyResolutionTier(texture: Texture, maxWidth: number): Texture {
+    const image = texture.image as { width?: number; height?: number; naturalWidth?: number; naturalHeight?: number } | undefined
+    if (!image || typeof document === 'undefined') return texture
+    const width = image.naturalWidth ?? image.width ?? 0
+    const height = image.naturalHeight ?? image.height ?? 0
+    if (!(width > 0) || !(height > 0) || width <= maxWidth) return texture
+
+    const scaledWidth = maxWidth
+    const scaledHeight = Math.max(1, Math.round((height / width) * maxWidth))
+    const canvas = document.createElement('canvas')
+    canvas.width = scaledWidth
+    canvas.height = scaledHeight
+    const context = canvas.getContext('2d')
+    if (!context) return texture
+    context.drawImage(image as CanvasImageSource, 0, 0, scaledWidth, scaledHeight)
+    const scaled = new CanvasTexture(canvas)
+    texture.dispose()
+    return scaled
+  }
+
+  private evictOverflow(): void {
+    while (this.cache.size > this.maxCacheEntries) {
+      // Evict the oldest entry that is not currently being rendered.
+      const oldestKey = this.cache.keys().next().value
+      if (oldestKey === undefined) return
+      const evicted = this.cache.get(oldestKey)
+      this.cache.delete(oldestKey)
+      evicted?.dispose()
+    }
   }
 
   private readonly proceduralCache = new Map<string, CanvasTexture>()

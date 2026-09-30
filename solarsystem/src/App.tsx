@@ -1,9 +1,9 @@
 /**
  * Application shell.
  *
- * Flow: splash -> data loading -> explorer. The engine is created only once the
- * user enters the exhibition and the catalog is in memory, which keeps the splash
- * instant while still giving the loading screen something real to report.
+ * Flow: splash (data preloads in the background, engine starts as soon as the
+ * catalog is in memory so the title screen has a live 3D background) -> enter ->
+ * loading screen (renderer + texture warm-up, both real work) -> explorer.
  *
  * The React layer holds no three.js objects: it renders HUD and panels, and every
  * control calls into the engine through the store.
@@ -25,7 +25,7 @@ import { loadCatalog, bodyDisplayName } from './data/CatalogLoader'
 import { CatalogSearchIndex } from './data/SearchIndex'
 import { createTranslator, type Language } from './i18n'
 import type { MinorBodyRuntime } from './engine/SolarSystemEngine'
-import { TOUR_STOPS } from './data/Tour'
+import { TOUR_STOPS, tourCountsFromStatistics } from './data/Tour'
 import type { SearchHit } from './data/SearchIndex'
 import type { ScaleMode } from './data/ScaleModel'
 import type { QualityLevel } from './engine/QualityController'
@@ -37,6 +37,10 @@ const LOAD_STEP_LABELS: Array<{ stage: string; zh: string; en: string }> = [
   { stage: 'planetElements', zh: '加载行星轨道根数', en: 'Loading planetary elements' },
   { stage: 'starfield', zh: '加载恒星背景目录', en: 'Loading stellar background' },
   { stage: 'minorBodies', zh: '构建小天体轨道数据库', en: 'Building minor-body orbit database' },
+  // The last two steps are engine work, not catalogue downloads: they exist so the
+  // progress list covers the whole start-up, renderer first (§57).
+  { stage: 'renderer', zh: '初始化渲染器', en: 'Initializing renderer' },
+  { stage: 'textures', zh: '加载行星贴图', en: 'Loading planetary textures' },
 ]
 
 export function App() {
@@ -47,6 +51,10 @@ export function App() {
   const [loadRatio, setLoadRatio] = useState(0)
   const [loadMessage, setLoadMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
+  /** True once the catalogue is in memory (the engine then starts by itself). */
+  const [catalogLoaded, setCatalogLoaded] = useState(false)
+  const enteredRef = useRef(false)
+  const warmUpStartedRef = useRef(false)
 
   const t = useMemo(() => createTranslator(store.language), [store.language])
 
@@ -71,13 +79,30 @@ export function App() {
 
   const set = store.setState
 
-  /** Boot: load configuration, then the catalog, then build the search index. */
+  /**
+   * Preload: configuration, then the catalog, then the search index. This runs
+   * while the splash screen is up, so the splash can report the real catalogue
+   * statistics instead of the "—" placeholder it used to show (§30), and the
+   * engine can start behind it.
+   */
   const boot = useCallback(async () => {
-    set({ phase: 'loading', errorMessage: null })
     setSteps(LOAD_STEP_LABELS.map((label) => ({ ...label, state: 'pending' })))
     setLoadRatio(0)
     try {
       const { config } = await loadExhibitionConfig()
+      // Config-driven initial state: the four keys that had no consumer
+      // (`defaultTarget`, `enableScientificMode`, `showPerformanceOverlay`,
+      // `guidedTourOnIdle`) now reach the UI (P1-4).
+      set({
+        config,
+        language: config.language,
+        scaleMode: config.defaultScaleMode,
+        quality: config.defaultQuality,
+        starfieldVisible: config.enableStarfield,
+        scientificMode: config.enableScientificMode,
+        showPerformance: config.showPerformanceOverlay,
+        minorVisible: false,
+      })
       const catalog = await loadCatalog({
         enableMinorPlanets: config.enableMinorPlanets,
         enableStarfield: config.enableStarfield,
@@ -98,20 +123,8 @@ export function App() {
       })
 
       const searchIndex = new CatalogSearchIndex(catalog.bodies, catalog.minorBodies)
-      setSteps((current) => current.map((step) => ({ ...step, state: 'done' })))
-      setLoadRatio(1)
-
-      set({
-        config,
-        catalog,
-        searchIndex,
-        language: config.language,
-        scaleMode: config.defaultScaleMode,
-        quality: config.defaultQuality,
-        starfieldVisible: config.enableStarfield,
-        minorVisible: false,
-        phase: 'ready',
-      })
+      set({ catalog, searchIndex })
+      setCatalogLoaded(true)
     } catch (loadError) {
       setError(String(loadError))
       set({ phase: 'error', errorMessage: String(loadError) })
@@ -119,18 +132,101 @@ export function App() {
   }, [set])
 
   const retry = useCallback(() => {
+    setError(null)
+    setCatalogLoaded(false)
+    enteredRef.current = false
+    warmUpStartedRef.current = false
+    set({ phase: 'loading', catalog: null, engineReady: false })
     void boot()
-  }, [boot])
+  }, [boot, set])
 
+  // The preload starts immediately so the splash screen shows real data; the phase
+  // stays on the splash until the visitor asks to enter.
   useEffect(() => {
-    if (store.phase === 'loading' && steps.length === 0) void boot()
-    // Boot runs once, when the visitor enters from the splash screen.
+    if (store.catalog || store.phase === 'error') return
+    void boot()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.phase])
+  }, [])
+
+  /**
+   * Engine steps. Once the catalog is loaded the engine exists (see useEngine), and
+   * entering the exhibition runs the one remaining piece of real start-up work: the
+   * texture warm-up. Progress is measured, not simulated.
+   */
+  useEffect(() => {
+    if (store.phase !== 'loading' || !catalogLoaded || !store.engineReady) return
+    if (warmUpStartedRef.current) return
+    warmUpStartedRef.current = true
+    setSteps((current) =>
+      current.map((step) => {
+        if (step.stage === 'renderer') return { ...step, state: 'done' }
+        if (step.stage === 'textures') return { ...step, state: 'active' }
+        return { ...step, state: 'done' }
+      }),
+    )
+    setLoadMessage(createTranslator(useAppStore.getState().language)('loadingTextures'))
+    const engine = getEngine()
+    if (!engine) {
+      set({ phase: 'ready' })
+      return
+    }
+    void engine
+      .warmUpTextures((loaded, total) => {
+        setLoadRatio(0.98 + (total > 0 ? (loaded / total) * 0.02 : 0.02))
+      })
+      .then(() => {
+        setSteps((current) => current.map((step) => ({ ...step, state: 'done' })))
+        setLoadRatio(1)
+        set({ phase: 'ready' })
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.phase, catalogLoaded, store.engineReady, set])
+
+  // If the visitor enters before the preload finishes, the catalogue steps simply
+  // keep running behind the loading screen; the engine step starts as soon as both
+  // the catalogue and the renderer are ready.
+  useEffect(() => {
+    if (store.phase !== 'loading' || catalogLoaded || store.engineReady) return
+    setSteps((current) =>
+      current.map((step) =>
+        step.stage === 'manifest' || step.state !== 'pending' ? step : { ...step, state: 'active' },
+      ),
+    )
+  }, [store.phase, catalogLoaded, store.engineReady])
+
+  const enterExhibition = useCallback(() => {
+    enteredRef.current = true
+    set({ phase: 'loading' })
+  }, [set])
 
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-scale', String(store.config?.uiScale ?? 1))
   }, [store.config?.uiScale])
+
+  // The document language and title follow the interface language, so a screen
+  // reader and the browser's own translation pick the right locale (§53/§54).
+  useEffect(() => {
+    const language = store.language
+    const config = store.config
+    document.documentElement.lang = language
+    const title = config ? (language === 'zh-CN' ? config.title.zh : config.title.en) : t('appTitle')
+    document.title = `${title} | ${t('appSubtitle')}`
+  }, [store.language, store.config, t])
+
+  /**
+   * `defaultTarget` from the exhibition configuration. Applied once, when the
+   * explorer becomes ready, and only when the catalog actually contains the body.
+   */
+  const defaultTargetApplied = useRef(false)
+  useEffect(() => {
+    if (store.phase !== 'ready' || defaultTargetApplied.current) return
+    const target = store.config?.defaultTarget
+    if (!target) return
+    const engine = getEngine()
+    if (!engine || !store.catalog?.bodyById.has(target)) return
+    defaultTargetApplied.current = true
+    engine.flyTo(target)
+  }, [store.phase, store.config?.defaultTarget, store.catalog])
 
   /* --------------------------------------------------------------- callbacks */
 
@@ -190,17 +286,31 @@ export function App() {
     [handleFlyTo, handleSelectMinor, set, store.catalog],
   )
 
+  /**
+   * The HUD target indicator follows what the camera is actually locked to, not
+   * merely what is selected, so pressing Escape (which releases both) can no longer
+   * leave the HUD claiming a target the camera has left (P2-6).
+   */
   const trackedName = useMemo(() => {
     if (!store.catalog) return null
-    if (store.selectedId) {
-      const body = store.catalog.bodyById.get(store.selectedId)
-      return body ? bodyDisplayName(body, store.language) : store.selectedId
+    const id = store.trackedId
+    if (!id) return null
+    if (id.startsWith('minor:')) {
+      const index = Number(id.slice('minor:'.length))
+      return store.catalog.minorBodies?.recordAt(index)?.name ?? null
     }
-    if (store.selectedMinorIndex !== null) {
-      return store.catalog.minorBodies?.recordAt(store.selectedMinorIndex)?.name ?? null
-    }
-    return null
-  }, [store.catalog, store.selectedId, store.selectedMinorIndex, store.language])
+    const body = store.catalog.bodyById.get(id)
+    return body ? bodyDisplayName(body, store.language) : id
+  }, [store.catalog, store.trackedId, store.language])
+
+  /** Localized display name of any catalogued body, for the information panel. */
+  const resolveBodyName = useCallback(
+    (id: string) => {
+      const body = store.catalog?.bodyById.get(id)
+      return body ? bodyDisplayName(body, store.language) : null
+    },
+    [store.catalog, store.language],
+  )
 
   const toggleFilter = useCallback(
     (key: string) => {
@@ -211,6 +321,12 @@ export function App() {
       })
     },
     [set, store.activeFilters],
+  )
+
+  /** Catalogue-derived numbers quoted by the guided tour (no hard-coded counts). */
+  const tourCounts = useMemo(
+    () => tourCountsFromStatistics(store.catalog?.catalog.statistics ?? null),
+    [store.catalog],
   )
 
   const validationSummary = useMemo(() => {
@@ -243,8 +359,9 @@ export function App() {
             },
           } as never}
           statistics={store.catalog?.catalog.statistics ?? null}
+          liveBackground={store.engineReady}
           t={t}
-          onEnter={() => set({ phase: 'loading' })}
+          onEnter={enterExhibition}
         />
       )}
 
@@ -290,6 +407,7 @@ export function App() {
             atmosphereVisible={store.atmosphereVisible}
             activeFilters={store.activeFilters}
             scientificMode={store.scientificMode}
+            scientificModeAvailable={store.config?.enableScientificMode ?? true}
             showPerformance={store.showPerformance}
             statistics={store.statistics}
             catalogStatistics={store.catalog?.catalog.statistics ?? null}
@@ -349,6 +467,7 @@ export function App() {
             scaleMode={store.scaleMode}
             radiusMagnification={store.bodyDescription?.radiusMagnification ?? 1}
             scientificMode={store.scientificMode}
+            resolveBodyName={resolveBodyName}
             onClose={() => withEngine((engine) => engine.clearSelection())()}
             onFlyTo={() => store.selectedId && handleFlyTo(store.selectedId)}
           />
@@ -411,9 +530,17 @@ export function App() {
                   case 'performance':
                     set({ showPerformance: !store.showPerformance })
                     break
-                  case 'autoDemo':
-                    set({ config: store.config ? { ...store.config, enableAutoDemo: !store.config.enableAutoDemo } : null })
+                  case 'autoDemo': {
+                    // Both names for the switch are written together, so the idle
+                    // check can never disagree with what the panel shows (P1-4).
+                    const next = !(store.config?.enableAutoDemo ?? true)
+                    set({
+                      config: store.config
+                        ? { ...store.config, enableAutoDemo: next, autoDemo: next }
+                        : null,
+                    })
                     break
+                  }
                 }
               }}
               onUiScale={(value) => set({ config: store.config ? { ...store.config, uiScale: value } : null })}
@@ -431,6 +558,7 @@ export function App() {
               language={store.language}
               active={store.tourActive}
               step={store.tourStep}
+              counts={tourCounts}
               onStart={() => set({ tourActive: true, tourStep: 0 })}
               onNext={() =>
                 set({
@@ -444,7 +572,7 @@ export function App() {
           ) : null}
 
           {store.showPerformance && (
-            <PerformanceOverlay t={t} snapshot={store.performance} history={[]} />
+            <PerformanceOverlay t={t} snapshot={store.performance} history={store.performanceHistory} />
           )}
 
           <div className="toast-stack">

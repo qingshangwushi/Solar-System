@@ -80,6 +80,18 @@ export function formatDistance(km: number, locale: 'zh-CN' | 'en-US'): string {
   return `${value.toFixed(value < 10 ? 3 : value < 1000 ? 1 : 0)} ${selected[1]}`
 }
 
+/**
+ * Equivalent distance expressed in Earth radii (R⊕ = 6371 km, IAU nominal value).
+ * The unit system in the specification lists km / au / Mkm / Earth radii; this is
+ * the fourth one, and it is the readable scale for satellite systems.
+ */
+export function formatEarthRadii(km: number, locale: 'zh-CN' | 'en-US'): string {
+  if (!Number.isFinite(km)) return '—'
+  const value = km / EARTH_RADIUS_KM
+  const digits = Math.abs(value) < 10 ? 2 : Math.abs(value) < 1000 ? 1 : 0
+  return locale === 'zh-CN' ? `${value.toFixed(digits)} R⊕` : `${value.toFixed(digits)} R_E`
+}
+
 /** Scientific (exponential) notation used by the scientific-mode panels. */
 export function formatScientific(value: number | null, digits = 4, unit?: string): string {
   if (value === null || !Number.isFinite(value)) return '—'

@@ -53,10 +53,22 @@ export function mergeExhibitionConfig(raw: unknown): ExhibitionConfig {
   const input = raw as Record<string, unknown>
   const scaleMode = input.defaultScaleMode
   const quality = input.defaultQuality
+  // `enableAutoDemo` (settings panel) and `autoDemo` (specification §55) are two
+  // names for one switch; they are merged so both can never disagree, which is what
+  // made the settings toggle appear dead (P1-4). The documented delay key name
+  // `autoDemoDelay` is accepted as an alias of `autoDemoDelaySeconds`, so a config
+  // written strictly to the specification is no longer silently ignored.
+  const autoDemo = coerceBoolean(
+    input.enableAutoDemo,
+    coerceBoolean(input.autoDemo, DEFAULT_EXHIBITION_CONFIG.autoDemo),
+  )
   return {
     language: coerceLanguage(input.language),
-    autoDemo: coerceBoolean(input.autoDemo, DEFAULT_EXHIBITION_CONFIG.autoDemo),
-    autoDemoDelaySeconds: coerceNumber(input.autoDemoDelaySeconds, DEFAULT_EXHIBITION_CONFIG.autoDemoDelaySeconds),
+    autoDemo,
+    autoDemoDelaySeconds: coerceNumber(
+      input.autoDemoDelay ?? input.autoDemoDelaySeconds,
+      DEFAULT_EXHIBITION_CONFIG.autoDemoDelaySeconds,
+    ),
     defaultTarget: typeof input.defaultTarget === 'string' ? input.defaultTarget : DEFAULT_EXHIBITION_CONFIG.defaultTarget,
     defaultScaleMode:
       scaleMode === 'scientific' || scaleMode === 'visible' || scaleMode === 'exhibition'
@@ -69,7 +81,7 @@ export function mergeExhibitionConfig(raw: unknown): ExhibitionConfig {
     enableScientificMode: coerceBoolean(input.enableScientificMode, DEFAULT_EXHIBITION_CONFIG.enableScientificMode),
     enableMinorPlanets: coerceBoolean(input.enableMinorPlanets, DEFAULT_EXHIBITION_CONFIG.enableMinorPlanets),
     enableStarfield: coerceBoolean(input.enableStarfield, DEFAULT_EXHIBITION_CONFIG.enableStarfield),
-    enableAutoDemo: coerceBoolean(input.enableAutoDemo, DEFAULT_EXHIBITION_CONFIG.enableAutoDemo),
+    enableAutoDemo: autoDemo,
     guidedTourOnIdle: coerceBoolean(input.guidedTourOnIdle, DEFAULT_EXHIBITION_CONFIG.guidedTourOnIdle),
     showPerformanceOverlay: coerceBoolean(input.showPerformanceOverlay, DEFAULT_EXHIBITION_CONFIG.showPerformanceOverlay),
     uiScale: Math.min(2, Math.max(0.75, coerceNumber(input.uiScale, DEFAULT_EXHIBITION_CONFIG.uiScale))),

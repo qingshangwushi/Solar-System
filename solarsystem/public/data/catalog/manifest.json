@@ -1,9 +1,11 @@
 {
   "version": "v20260929",
-  "generatedAt": "2026-09-29T09:57:32.423Z",
+  "generatedAt": "2026-09-29T18:07:32.874Z",
+  "sourceUpdatedAt": "2026-09-29T09:57:32.128Z",
+  "catalogFile": "catalog-v20260929.json",
   "files": [
     {
-      "path": "catalog/catalog.json",
+      "path": "catalog/catalog-v20260929.json",
       "role": "Sun, planets, dwarf planets, satellites, starfield manifest"
     },
     {

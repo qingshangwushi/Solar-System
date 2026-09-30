@@ -37,6 +37,8 @@ export interface AppState {
   config: ExhibitionConfig | null
   catalog: LoadedCatalog | null
   searchIndex: CatalogSearchIndex | null
+  /** True once the WebGL engine exists; the loading screen reports it as a step. */
+  engineReady: boolean
 
   language: Language
   julianDate: number
@@ -45,6 +47,12 @@ export interface AppState {
 
   selectedId: string | null
   selectedMinorIndex: number | null
+  /**
+   * What the camera is actually locked to, mirrored from the engine. Kept apart
+   * from `selectedId` so the HUD indicator and the camera can never disagree
+   * (specification §45).
+   */
+  trackedId: string | null
   cameraMode: CameraMode
   scaleMode: ScaleMode
 
@@ -70,6 +78,8 @@ export interface AppState {
 
   statistics: EngineStatistics | null
   performance: PerformanceSnapshot | null
+  /** Rolling frame-time history for the performance sparkline. */
+  performanceHistory: number[]
   bodyDescription: BodyDescription | null
   minorDescription: MinorBodyDescription | null
   searchQuery: string
@@ -94,6 +104,7 @@ export const useAppStore = create<AppState>((set) => ({
   config: null,
   catalog: null,
   searchIndex: null,
+  engineReady: false,
 
   language: 'zh-CN',
   julianDate: 2451545,
@@ -102,6 +113,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   selectedId: null,
   selectedMinorIndex: null,
+  trackedId: null,
   cameraMode: 'overview',
   scaleMode: 'visible',
 
@@ -127,6 +139,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   statistics: null,
   performance: null,
+  performanceHistory: [],
   bodyDescription: null,
   minorDescription: null,
   searchQuery: '',

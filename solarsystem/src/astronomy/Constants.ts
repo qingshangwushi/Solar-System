@@ -7,7 +7,7 @@
  *  - NASA/JPL Solar System Dynamics (planetary GM values, planet poles)
  *
  * GM values of the planetary systems are read from the generated catalog
- * (data/sources/planet-physical.json -> public/data/catalog/catalog.json) rather
+ * (data/sources/planet-physical.json -> public/data/catalog/catalog-v<version>.json) rather
  * than hard-coded here, so a data refresh propagates automatically.
  */
 

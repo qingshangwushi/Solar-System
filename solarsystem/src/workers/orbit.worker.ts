@@ -16,12 +16,7 @@
  */
 /// <reference lib="webworker" />
 
-import { perifocalPositionFromMeanAnomaly, perifocalToReferenceFrame } from '../astronomy/KeplerSolver'
-import { AU_KM } from '../astronomy/Units'
-
-const STRIDE = 8
-const SECONDS_PER_DAY = 86_400
-const MJD_TO_JD = 2_400_000.5
+import { propagateMinorBodyKm, sampleMinorBodyOrbitKm } from '../astronomy/MinorBodyPropagator'
 
 const scope = self as unknown as DedicatedWorkerGlobalScope
 
@@ -94,28 +89,8 @@ function handleUpdate(message: UpdateMessage): void {
   const array = elements
 
   for (let slot = 0; slot < count; slot++) {
-    const offset = subset[slot] * STRIDE
-    const qAu = array[offset]
-    const eccentricity = array[offset + 1]
-    const inclination = array[offset + 2]
-    const node = array[offset + 3]
-    const argumentOfPeriapsis = array[offset + 4]
-    const perihelionMjd = array[offset + 5]
-
-    // a = q / (1 - e); negative for hyperbolic orbits, so one code path covers both.
-    const semiMajorAxisKm = (qAu * AU_KM) / (1 - eccentricity)
-    const meanMotionPerSecond = Math.sqrt(gm / Math.abs(semiMajorAxisKm) ** 3)
-    const secondsSincePerihelion = (message.julianDate - (perihelionMjd + MJD_TO_JD)) * SECONDS_PER_DAY
-    const meanAnomaly = meanMotionPerSecond * secondsSincePerihelion
-
-    const plane = perifocalPositionFromMeanAnomaly(semiMajorAxisKm, eccentricity, meanAnomaly)
-    const position = perifocalToReferenceFrame(plane, {
-      semiMajorAxisKm,
-      eccentricity,
-      inclinationRad: inclination,
-      nodeRad: node,
-      argumentOfPeriapsisRad: argumentOfPeriapsis,
-    })
+    const position = propagateMinorBodyKm(array, subset[slot], message.julianDate, gm)
+    if (!position) continue
     output[slot * 3] = position.x
     output[slot * 3 + 1] = position.y
     output[slot * 3 + 2] = position.z
@@ -135,49 +110,8 @@ function handleUpdate(message: UpdateMessage): void {
 function handleOrbitPath(message: OrbitPathMessage): void {
   const started = performance.now()
   if (!elements) return
-  const offset = message.index * STRIDE
-  const qAu = elements[offset]
-  const eccentricity = elements[offset + 1]
-  const semiMajorAxisKm = (qAu * AU_KM) / (1 - eccentricity)
-  const elementsSet = {
-    semiMajorAxisKm,
-    eccentricity,
-    inclinationRad: elements[offset + 2],
-    nodeRad: elements[offset + 3],
-    argumentOfPeriapsisRad: elements[offset + 4],
-  }
-
-  const samples = Math.max(32, message.samples)
-  let points: Float64Array
-  if (eccentricity < 1) {
-    points = new Float64Array(samples * 3)
-    for (let index = 0; index < samples; index++) {
-      const meanAnomaly = (index / samples) * Math.PI * 2
-      const plane = perifocalPositionFromMeanAnomaly(semiMajorAxisKm, eccentricity, meanAnomaly)
-      const position = perifocalToReferenceFrame(plane, elementsSet)
-      points[index * 3] = position.x
-      points[index * 3 + 1] = position.y
-      points[index * 3 + 2] = position.z
-    }
-  } else {
-    const asymptote = Math.acos(-1 / eccentricity) * 0.96
-    const periapsis = semiMajorAxisKm * (1 - eccentricity)
-    points = new Float64Array(samples * 2 * 3)
-    for (let index = 0; index < samples * 2; index++) {
-      const sign = index < samples ? -1 : 1
-      const fraction = (index % samples) / (samples - 1)
-      const trueAnomaly = sign * fraction * asymptote
-      const radius = (periapsis * (1 + eccentricity)) / (1 + eccentricity * Math.cos(trueAnomaly))
-      const position = perifocalToReferenceFrame(
-        { x: radius * Math.cos(trueAnomaly), y: radius * Math.sin(trueAnomaly) },
-        elementsSet,
-      )
-      points[index * 3] = position.x
-      points[index * 3 + 1] = position.y
-      points[index * 3 + 2] = position.z
-    }
-  }
-
+  const points = sampleMinorBodyOrbitKm(elements, message.index, message.samples)
+  if (!points) return
   const buffer = points.buffer
   scope.postMessage(
     { type: 'orbitPath', requestId: message.requestId, index: message.index, positions: buffer, computeMs: performance.now() - started },

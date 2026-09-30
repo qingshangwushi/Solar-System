@@ -23,9 +23,17 @@
  *    systems (a non-linear mapping has no global "km per unit");
  *  - `orbitalClearanceUnits` : a per-parent budget that keeps a satellite system
  *    from collapsing inside the planet it orbits.
+ *
+ * Frame: the astronomy layer works in the heliocentric ecliptic J2000 frame, the
+ * renderer works in the Y-up scene frame. `positionKmToUnits` therefore applies the
+ * single `ECLIPTIC_TO_SCENE` rotation (see astronomy/Coordinates.ts) to every vector
+ * it maps, and `unitsToKmVector` applies its inverse. Because the rotation commutes
+ * with any radially symmetric scale, positions, parent-relative offsets and orbit
+ * polylines all stay in one consistent frame — there is no second convention to
+ * forget (this was P0-2 of docs/e2e-verification-report.md).
  */
 import { AU_KM } from '../astronomy/Units'
-import type { Vec3 } from '../astronomy/Coordinates'
+import { ECLIPTIC_TO_SCENE, SCENE_TO_ECLIPTIC, applyMat3, type Vec3 } from '../astronomy/Coordinates'
 
 export type ScaleMode = 'scientific' | 'visible' | 'exhibition'
 
@@ -132,6 +140,16 @@ function scaleVec(vector: Vec3, factor: number): Vec3 {
   return { x: vector.x * factor, y: vector.y * factor, z: vector.z * factor }
 }
 
+/** Heliocentric ecliptic J2000 vector -> render (scene) frame. */
+function eclipticToScene(vector: Vec3): Vec3 {
+  return applyMat3(ECLIPTIC_TO_SCENE, vector)
+}
+
+/** Render (scene) frame vector -> heliocentric ecliptic J2000. */
+function sceneToEcliptic(vector: Vec3): Vec3 {
+  return applyMat3(SCENE_TO_ECLIPTIC, vector)
+}
+
 function linearUnits(km: number): number {
   return km / KM_PER_UNIT
 }
@@ -178,10 +196,10 @@ export function createScaleTransform(mode: ScaleMode): ScaleTransform {
     case 'scientific':
       return {
         mode,
-        positionKmToUnits: (vector) => ({ x: linearUnits(vector.x), y: linearUnits(vector.y), z: linearUnits(vector.z) }),
+        positionKmToUnits: (vector) => eclipticToScene(scaleVec(vector, 1 / KM_PER_UNIT)),
         distanceKmToUnits: linearUnits,
         unitsToDistanceKm: (units) => units * KM_PER_UNIT,
-        unitsToKmVector: (units) => scaleVec(units, KM_PER_UNIT),
+        unitsToKmVector: (units) => scaleVec(sceneToEcliptic(units), KM_PER_UNIT),
         localScaleFactorKmToUnits: () => 1 / KM_PER_UNIT,
         radiusKmToUnits: (km) => Math.max(MIN_BODY_RADIUS_UNITS, linearUnits(km)),
         radiusMagnification: () => 1,
@@ -190,10 +208,10 @@ export function createScaleTransform(mode: ScaleMode): ScaleTransform {
     case 'visible':
       return {
         mode,
-        positionKmToUnits: (vector) => ({ x: linearUnits(vector.x), y: linearUnits(vector.y), z: linearUnits(vector.z) }),
+        positionKmToUnits: (vector) => eclipticToScene(scaleVec(vector, 1 / KM_PER_UNIT)),
         distanceKmToUnits: linearUnits,
         unitsToDistanceKm: (units) => units * KM_PER_UNIT,
-        unitsToKmVector: (units) => scaleVec(units, KM_PER_UNIT),
+        unitsToKmVector: (units) => scaleVec(sceneToEcliptic(units), KM_PER_UNIT),
         localScaleFactorKmToUnits: () => 1 / KM_PER_UNIT,
         radiusKmToUnits: (km) => compressiveRadiusUnits(km, VISIBLE_RADIUS_GAIN),
         radiusMagnification: (km) => compressiveRadiusUnits(km, VISIBLE_RADIUS_GAIN) / Math.max(1e-9, linearUnits(km)),
@@ -206,14 +224,15 @@ export function createScaleTransform(mode: ScaleMode): ScaleTransform {
         positionKmToUnits: (vector) => {
           const magnitude = Math.sqrt(vector.x ** 2 + vector.y ** 2 + vector.z ** 2)
           if (magnitude === 0) return { x: 0, y: 0, z: 0 }
-          return scaleVec(vector, exhibitionUnits(magnitude) / magnitude)
+          return eclipticToScene(scaleVec(vector, exhibitionUnits(magnitude) / magnitude))
         },
         distanceKmToUnits: exhibitionUnits,
         unitsToDistanceKm: exhibitionUnitsInverse,
         unitsToKmVector: (units) => {
-          const magnitude = Math.hypot(units.x, units.y, units.z)
+          const local = sceneToEcliptic(units)
+          const magnitude = Math.hypot(local.x, local.y, local.z)
           if (magnitude === 0) return { x: 0, y: 0, z: 0 }
-          return scaleVec(units, exhibitionUnitsInverse(magnitude) / magnitude)
+          return scaleVec(local, exhibitionUnitsInverse(magnitude) / magnitude)
         },
         localScaleFactorKmToUnits: exhibitionLocalFactor,
         radiusKmToUnits: (km, radiusClass = 'planet') => compressiveRadiusUnits(km, EXHIBITION_RADIUS_GAIN[radiusClass]),

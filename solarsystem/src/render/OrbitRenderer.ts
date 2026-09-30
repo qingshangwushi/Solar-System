@@ -22,6 +22,7 @@ import {
   Object3D,
 } from 'three'
 import type { Vec3 } from '../astronomy/Coordinates'
+import { eclipticToScene } from '../astronomy/Coordinates'
 import type { ScaleTransform } from '../data/ScaleModel'
 import type { RenderOrigin } from '../engine/FloatingOrigin'
 
@@ -56,9 +57,16 @@ export class OrbitRenderer {
     this.group.name = 'orbits'
   }
 
+  /**
+   * Show/hide every orbit line. Local (parent-relative) paths are parented to body
+   * groups rather than to `this.group`, so they are toggled individually — the
+   * earlier version only switched the group and left the satellite paths on screen
+   * (P2-2).
+   */
   setVisible(visible: boolean): void {
     this.visible = visible
     this.group.visible = visible
+    for (const line of this.localPaths.values()) line.visible = visible
   }
 
   get isVisible(): boolean {
@@ -113,6 +121,11 @@ export class OrbitRenderer {
    * Registers a static parent-relative path (moon orbits). `unitsPerKm` is supplied
    * by the position resolver so that the drawn ellipse coincides exactly with the
    * placed moons, including the satellite-system enhancement.
+   *
+   * The samples arrive in the heliocentric ecliptic frame while the parent group
+   * lives in the render (scene) frame, so the frame change is applied here — a local
+   * path that skipped it would be tilted 90° out of the plane its moon actually
+   * follows.
    */
   setLocalPath(
     key: string,
@@ -131,9 +144,14 @@ export class OrbitRenderer {
     const vertices = samplesKm.length / 3
     const positions = new Float32Array(vertices * 3)
     for (let index = 0; index < vertices; index++) {
-      positions[index * 3] = samplesKm[index * 3] * unitsPerKm
-      positions[index * 3 + 1] = samplesKm[index * 3 + 1] * unitsPerKm
-      positions[index * 3 + 2] = samplesKm[index * 3 + 2] * unitsPerKm
+      const scene = eclipticToScene({
+        x: samplesKm[index * 3],
+        y: samplesKm[index * 3 + 1],
+        z: samplesKm[index * 3 + 2],
+      })
+      positions[index * 3] = scene.x * unitsPerKm
+      positions[index * 3 + 1] = scene.y * unitsPerKm
+      positions[index * 3 + 2] = scene.z * unitsPerKm
     }
     const geometry = new BufferGeometry()
     geometry.setAttribute('position', new BufferAttribute(positions, 3))
@@ -147,6 +165,9 @@ export class OrbitRenderer {
     const line = new Line(geometry, material)
     line.frustumCulled = false
     line.renderOrder = 1
+    // Local paths hang off a body group instead of `this.group`, so the
+    // show/hide switch has to be applied per line as well.
+    line.visible = this.visible
     parent.add(line)
     this.localPaths.set(key, line)
   }
@@ -169,6 +190,14 @@ export class OrbitRenderer {
     line.geometry.dispose()
     ;(line.material as LineBasicMaterial).dispose()
     this.localPaths.delete(key)
+  }
+
+  /**
+   * Drops every local path. Used before a WebGL context restore rebuilds the body
+   * visuals, so the lines cannot stay attached to a detached group.
+   */
+  removeAllLocalPaths(): void {
+    for (const key of [...this.localPaths.keys()]) this.removeLocalPath(key)
   }
 
   get pathCount(): number {

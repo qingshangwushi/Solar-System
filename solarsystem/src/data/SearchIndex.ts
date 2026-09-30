@@ -19,7 +19,12 @@ export interface SearchHit {
   name: string
   nameZh: string | null
   typeLabel: string
+  /** Owning system, English name (§24). Null for objects with no parent. */
   parentLabel: string | null
+  /** Owning system, Chinese name when the catalogue publishes one. */
+  parentNameZh: string | null
+  /** Catalogue number, when the object has one. */
+  number: string | null
   designation: string
   score: number
 }
@@ -33,6 +38,8 @@ interface IndexDocument {
   aliases: string
   typeLabel: string
   parentLabel: string
+  parentNameZh: string
+  number: string
 }
 
 /** Bucket -> human label, translated at render time via the i18n dictionary. */
@@ -45,6 +52,22 @@ const BUCKET_LABELS: Record<string, string> = {
   comet: 'comet',
 }
 
+/**
+ * Chinese designations for the small bodies whose names have an established
+ * Chinese form. The source catalogue is English-only, so without this table a
+ * Chinese query could never match a small body (P2: "小天体无 nameZh").
+ * Values follow the standard Chinese planetary nomenclature for these objects.
+ */
+const MINOR_BODY_NAME_ZH: Record<string, string> = {
+  '1': '谷神星',
+  '134340': '冥王星',
+  '136108': '妊神星',
+  '136472': '鸟神星',
+  '136199': '阅神星',
+  '1P': '哈雷彗星',
+  '2P': '恩克彗星',
+}
+
 export class CatalogSearchIndex {
   private readonly index: MiniSearch<IndexDocument>
   private readonly documents = new Map<string, IndexDocument>()
@@ -53,7 +76,7 @@ export class CatalogSearchIndex {
   constructor(bodies: CelestialBody[], minorBodies: MinorBodyStore | null) {
     this.index = new MiniSearch<IndexDocument>({
       fields: ['name', 'nameZh', 'designation', 'aliases'],
-      storeFields: ['kind', 'name', 'nameZh', 'designation', 'typeLabel', 'parentLabel'],
+      storeFields: ['kind', 'name', 'nameZh', 'designation', 'typeLabel', 'parentLabel', 'parentNameZh', 'number'],
       searchOptions: {
         boost: { name: 3, nameZh: 2.5, designation: 2, aliases: 1.5 },
         prefix: true,
@@ -76,6 +99,8 @@ export class CatalogSearchIndex {
         aliases: (body.aliases ?? []).join(' '),
         typeLabel: body.type,
         parentLabel: parent?.name ?? '',
+        parentNameZh: parent?.nameZh ?? '',
+        number: '',
       })
     }
 
@@ -107,6 +132,8 @@ export class CatalogSearchIndex {
         nameZh: document?.nameZh ? document.nameZh : null,
         typeLabel: document?.typeLabel ?? '',
         parentLabel: document?.parentLabel ?? null,
+        parentNameZh: document?.parentNameZh ? document.parentNameZh : null,
+        number: document?.number ? document.number : null,
         designation: document?.designation ?? '',
         score: result.score,
       }
@@ -120,14 +147,22 @@ export class CatalogSearchIndex {
 }
 
 function minorBodyDocument(record: MinorBodyRecord): IndexDocument {
+  // Numbered objects carry their catalogue number as the record id ("136199",
+  // "1"); comet designations like "1P" are not numbers.
+  const number = /^[0-9]+$/.test(record.id) ? record.id : record.number ?? ''
+  const nameZh = record.nameZh ?? MINOR_BODY_NAME_ZH[record.id] ?? ''
   return {
     id: `minorBody:${record.id}`,
     kind: 'minorBody',
     name: record.name,
-    nameZh: '',
-    designation: [record.id, record.fullName, record.classCode].filter(Boolean).join(' '),
+    nameZh,
+    designation: [number, record.id, record.fullName, record.classCode].filter(Boolean).join(' '),
     aliases: record.fullName,
     typeLabel: BUCKET_LABELS[record.bucket] ?? record.bucket,
-    parentLabel: record.classLabel,
+    // A small body has no parent system of its own; the dynamical class is shown
+    // separately, so `parentLabel` stays empty for the search row.
+    parentLabel: '',
+    parentNameZh: '',
+    number,
   }
 }

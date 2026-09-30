@@ -10,30 +10,146 @@
  * The engine exposes `window.__solarSystemEngine` in development builds, which is
  * what makes these checks possible without test-only hooks in production code.
  *
- * Requirements (kept out of package.json so the exhibition build stays dependency
- * light):
- *   npm i -D playwright-core
- *   npx playwright-core install chromium
- *   npm run dev            (in another terminal)
- *   node scripts/smoke-test.mjs
+ * Requirements:
+ *   playwright-core is a devDependency (see package.json).
+ *   A Chromium executable: either set SMOKE_CHROMIUM, run
+ *   `npx playwright-core install chromium`, or leave a cached browser under
+ *   ~/Library/Caches/ms-playwright/ (the script finds either the full
+ *   "Google Chrome for Testing" bundle or the headless shell). If nothing is
+ *   found the run is SKIPPED with exit code 0 rather than reporting a fake pass.
+ *   A dev server: the script uses APP_URL when set, otherwise it uses
+ *   http://127.0.0.1:5173/ and, if nothing is listening there, starts the local
+ *   Vite dev server itself (the engine debug handle exists in DEV builds only).
+ *
+ *   node scripts/smoke-test.mjs      # or: npm run test:smoke
  *
  * Notes:
  *  - The default flags force ANGLE/SwiftShader, so the test also runs on a machine
  *    with no GPU (it is slow there — that is why the waits are generous).
- *  - Set APP_URL to point at a preview server instead of the dev server.
+ *  - Set APP_URL to point at an already-running dev/preview server.
  */
 
+import { spawn } from 'node:child_process'
+import { existsSync, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 
-const BASE = process.env.APP_URL || 'http://127.0.0.1:5173/'
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const DEFAULT_URL = 'http://127.0.0.1:5173/'
+const BASE = process.env.APP_URL || DEFAULT_URL
 const OUT = '/tmp/shots'
+
+/**
+ * Executable shapes produced by the Playwright browser installer, in preference
+ * order: the full browser before the headless shell, macOS arm64/x64 then Linux.
+ */
+const EXECUTABLE_SHAPES = [
+  ['chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'],
+  ['chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'],
+  ['chrome-headless-shell-mac-arm64', 'chrome-headless-shell'],
+  ['chrome-headless-shell-mac-x64', 'chrome-headless-shell'],
+  ['chrome-linux', 'chrome'],
+  ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
+]
+
+/**
+ * Finds a Chromium executable: an explicit SMOKE_CHROMIUM, then a cached browser
+ * under ~/Library/Caches/ms-playwright/, then PLAYWRIGHT_BROWSERS_PATH.
+ */
+function findChromium() {
+  if (process.env.SMOKE_CHROMIUM) return process.env.SMOKE_CHROMIUM
+
+  const roots = [path.join(homedir(), 'Library', 'Caches', 'ms-playwright')]
+  const candidates = []
+  if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
+    // Playwright may also be pointed at a directory containing `chromium/` directly.
+    candidates.push(path.join(process.env.PLAYWRIGHT_BROWSERS_PATH, 'chromium'))
+    roots.push(process.env.PLAYWRIGHT_BROWSERS_PATH)
+  }
+
+  for (const root of roots) {
+    let entries
+    try {
+      entries = readdirSync(root)
+    } catch {
+      continue
+    }
+    // Highest version first, and the full browser before the headless shell.
+    const versionOf = (name) => Number(/-(\d+)/.exec(name)?.[1] ?? 0)
+    const isHeadlessShell = (name) => name.startsWith('chromium_headless_shell')
+    entries.sort(
+      (a, b) =>
+        versionOf(b) - versionOf(a) ||
+        Number(isHeadlessShell(a)) - Number(isHeadlessShell(b)) ||
+        a.localeCompare(b),
+    )
+    for (const entry of entries) {
+      if (!/^chromium(_headless_shell)?-\d+/.test(entry)) continue
+      for (const shape of EXECUTABLE_SHAPES) candidates.push(path.join(root, entry, ...shape))
+    }
+  }
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+async function isReachable(url) {
+  try {
+    return (await fetch(url, { method: 'GET' })).ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The smoke test asserts on `window.__solarSystemEngine`, which the engine only
+ * exposes in development builds, so it must talk to the Vite dev server. When the
+ * caller did not point APP_URL at one and nothing is listening on the default port,
+ * start it here (verify:all runs this after `npm run build`, so there is no server).
+ */
+let devServer = null
+async function ensureDevServer() {
+  if (process.env.APP_URL || (await isReachable(BASE))) return
+  const viteBin = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js')
+  if (!existsSync(viteBin)) {
+    console.log('SKIPPED: no dev server reachable and vite is not installed')
+    process.exit(0)
+  }
+  console.log(`No server at ${BASE}; starting the Vite dev server ...`)
+  devServer = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', '5173', '--strictPort'], {
+    cwd: ROOT,
+    stdio: 'ignore',
+  })
+  process.on('exit', () => devServer?.kill('SIGTERM'))
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    if (await isReachable(BASE)) return
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  console.log('SKIPPED: the dev server did not become reachable in time')
+  devServer.kill('SIGTERM')
+  process.exit(0)
+}
+
 const results = []
 const record = (name, pass, note) => {
   results.push({ name, pass, note })
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}  — ${note}`)
 }
 
+await ensureDevServer()
+
+const executablePath = findChromium()
+if (!executablePath) {
+  console.log('SKIPPED: no Chromium executable found')
+  console.log('  set SMOKE_CHROMIUM=/path/to/chrome, or run `npx playwright-core install chromium`')
+  devServer?.kill('SIGTERM')
+  process.exit(0)
+}
+console.log(`Chromium: ${executablePath}`)
+
 const browser = await chromium.launch({
+  executablePath,
   headless: true,
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
 })
@@ -296,3 +412,4 @@ console.log(`\nTOTAL ${results.filter((r) => r.pass).length}/${results.length} p
 console.log('ERRORS', JSON.stringify(errors.slice(0, 10)))
 
 await browser.close()
+devServer?.kill('SIGTERM')

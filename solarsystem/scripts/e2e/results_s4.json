@@ -1,0 +1,83 @@
+[
+  {
+    "id": "S4-01",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "WebGL 上下文丢失/恢复：不刷新页面即可恢复，且不泄漏场景节点（§52）",
+    "status": "WARN",
+    "detail": "loseContext → contextLost=True（toast=['图形上下文丢失，正在尝试恢复', 'quality adjusted to ultra']）；restoreContext → contextRestored=True，恢复后 drawnBodies=178 drawCalls=36（无需刷新页面）；场景中 body: 组数量 178 → 356（泄漏 178 个空 Group：BodyVisual.dispose 只移除 frame.children，未从父级移除 group/frame）",
+    "evidence": [],
+    "at": "01:08:35"
+  },
+  {
+    "id": "S4-02",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "无 WebGL2 时给出可读提示而非白屏（§58）",
+    "status": "PASS",
+    "detail": "--disable-3d-apis 启动后：canvas 数=1，页面文本含可读降级提示 → 'SOLAR SYSTEM / INITIALIZING ASTRONOMICAL DATA / 数据加载失败: 当前环境未能创建 WebGL 上下文（可能是浏览器禁用了硬件加速，或在无 GPU 的沙箱中运行）。请启用 WebGL/硬件加速后重试。 / 重试'",
+    "evidence": [],
+    "at": "01:08:48"
+  },
+  {
+    "id": "S4-03",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "小天体数据加载失败时核心八大行星仍可正常运行（§58）",
+    "status": "PASS",
+    "detail": "中断 minor-bodies.json/.bin 后：渲染天体=178（星/行星/矮行星/卫星正常）、云中天体=0、八大行星描述均可取、地球日心距=147101661 km；小天体开关禁用={'toggles': [False, False, False, False, False, True, False], 'note': True}；toast=['quality adjusted to ultra']",
+    "evidence": [],
+    "at": "01:08:53"
+  },
+  {
+    "id": "S4-04",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "恒星背景数据失败时应用仍可用（§58）",
+    "status": "PASS",
+    "detail": "中断 stars.bin/stars.json 后：绘制恒星=0、编目天体=178（其余功能不受影响）",
+    "evidence": [],
+    "at": "01:08:57"
+  },
+  {
+    "id": "S4-05",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "exhibition.config.json 缺失或损坏时回退默认值且不致命（§55）",
+    "status": "PASS",
+    "detail": "返回损坏 JSON 后仍进入主场景（回退 DEFAULT_EXHIBITION_CONFIG）：drawn=178",
+    "evidence": [],
+    "at": "01:09:00"
+  },
+  {
+    "id": "S4-06",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "离线运行：阻断全部非本机请求后系统仍完整可用（§47）",
+    "status": "PASS",
+    "detail": "全部外部(非 127.0.0.1)请求被阻断（共拦截 0 个）：仍进入主场景、渲染天体=178、恒星=15598、小天体=10984、可 Fly To 土星 → 完全离线可用",
+    "evidence": [],
+    "at": "01:09:07"
+  },
+  {
+    "id": "S4-07",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "生产构建（vite preview）启动正常、无控制台错误、性能覆盖层默认隐藏（§42/§57）",
+    "status": "PASS",
+    "detail": "dist 产物经 vite preview 启动：HUD 就绪、engine 未暴露到 window（False）、性能覆盖层默认隐藏（False）、可见标签=15；console.error=0 pageerror=0；HUD=SOLAR SYSTEM EXPLORER 实时位置 2000-01-01 12:00:04 UTC 尺度 展览尺度 视角 太阳系全景 锁定目标 — 搜索 设置 导览 天体列表",
+    "evidence": [],
+    "at": "01:09:12"
+  },
+  {
+    "id": "S4-08",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "生产环境贴图请求路径正确性（§14/§15/§40 真实行星影像）",
+    "status": "FAIL",
+    "detail": "应用请求的是 dataUrl('textures/earth-day.jpg') = /textures/earth-day.jpg（缺 data/ 前缀）：该路径在生产下返回 (200, 'text/html')；正确路径 /data/textures/earth-day.jpg 返回 (200, 'image/jpeg')。→ 所有行星贴图请求都拿到 HTML 回退页（200 text/html）而非图片，解码失败后静默回退为程序化贴图，云层材质无贴图 → 地球等渲染为纯白/灰球，且信息面板未标注“程序化”（proceduralSurface 依赖目录声明而非实际加载结果）",
+    "evidence": [],
+    "at": "01:09:12"
+  },
+  {
+    "id": "S4-09",
+    "section": "4. 健壮性/降级/离线/生产构建",
+    "name": "WebGPU 能力探测与降级（§58）",
+    "status": "PASS",
+    "detail": "浏览器 navigator.gpu=True；应用固定使用 WebGL2（GraphicsCapability 仅探测 WebGPU，从不使用）→ §58 的 'WebGPU → WebGL2' 实际为 '始终 WebGL2'",
+    "evidence": [],
+    "at": "01:09:14"
+  }
+]

@@ -2,17 +2,26 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { ErrorBoundary } from './ui/ErrorBoundary'
+import { createTranslator, type Language } from './i18n'
 import './styles/app.css'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('missing #root element')
 
+/**
+ * The crash screen is localized too: the exhibition may run in either language, and
+ * an English-only installation must not show Chinese prose (P2-14). The browser
+ * language decides, because the exhibition configuration has not loaded yet here.
+ */
+const language: Language = (navigator.language ?? '').toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
+const t = createTranslator(language)
+
 createRoot(rootElement).render(
   <StrictMode>
     <ErrorBoundary
-      title="SOLAR SYSTEM / RUNTIME ERROR"
-      detail="展项组件发生异常，已阻止整页空白。请重试；若反复出现，请查看控制台堆栈并检查显卡驱动与浏览器硬件加速设置。"
-      retryLabel="重试"
+      title={t('runtimeErrorTitle')}
+      detail={t('runtimeErrorDetail')}
+      retryLabel={t('retry')}
       onRetry={() => window.location.reload()}
     >
       <App />

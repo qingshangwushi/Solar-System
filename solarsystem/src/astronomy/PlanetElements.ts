@@ -123,8 +123,12 @@ export function keplerPlanetHeliocentricKm(
   }
   const barycenter = keplerPlanetPositionKm(dataset, 'earthMoonBarycenter', julianDate)
   if (!moonGeocentricKm) return barycenter
-  // Earth = EMB − r_moon/(1+μ)
-  const factor = 1 / (1 + MOON_EARTH_MASS_RATIO)
+  // The Earth sits μ/(1+μ) of the way from the barycenter towards the Moon, measured
+  // against the geocentric lunar vector:
+  //     r_earth = r_EMB − μ/(1+μ) · r_moon(geocentric),  μ = m_moon/m_earth
+  // Using 1/(1+μ) instead (the Moon's own coefficient) displaces the Earth by almost
+  // one lunar distance, which was the largest residual in the Mode B validation.
+  const factor = MOON_EARTH_MASS_RATIO / (1 + MOON_EARTH_MASS_RATIO)
   return {
     x: barycenter.x - moonGeocentricKm.x * factor,
     y: barycenter.y - moonGeocentricKm.y * factor,

@@ -78,8 +78,8 @@ export const TOUR_STOPS: TourStop[] = [
     timeScale: 86400,
     title: { zh: '06 火星', en: '06 Mars' },
     narration: {
-      zh: '火星轨道离心率 0.0934、轨道倾角 1.85°，自转周期 24.62 小时，自转轴倾角 25.19°。已编目卫星 2 颗：火卫一与火卫二。',
-      en: 'Mars has e = 0.0934, i = 1.85°, a 24.62-hour rotation and a 25.19° axial tilt. Two satellites are catalogued: Phobos and Deimos.',
+      zh: '火星轨道离心率 0.0934、轨道倾角 1.85°，自转周期 24.62 小时，自转轴倾角 25.19°。已编目卫星 {marsSatellites} 颗：火卫一与火卫二。',
+      en: 'Mars has e = 0.0934, i = 1.85°, a 24.62-hour rotation and a 25.19° axial tilt. {marsSatellites} satellites are catalogued: Phobos and Deimos.',
     },
   },
   {
@@ -90,8 +90,8 @@ export const TOUR_STOPS: TourStop[] = [
     filters: ['mainBelt', 'trojan'],
     title: { zh: '07 小行星带', en: '07 The asteroid belt' },
     narration: {
-      zh: '小行星带不是一条环形装饰，而是由真实轨道根数（JPL SBDB）生成的约 1.1 万个天体，按视距与筛选动态渲染，使用 GPU 点云与 Worker 轨道计算。',
-      en: 'The belt is not a decorative ring: it is ~11 000 bodies propagated from real osculating elements (JPL SBDB), rendered as a GPU point cloud with the Kepler solve running in a Web Worker.',
+      zh: '小行星带不是一条环形装饰，而是由真实轨道根数（JPL SBDB）生成的 {beltCount} 个天体，按视距与筛选动态渲染，使用 GPU 点云与 Worker 轨道计算。',
+      en: 'The belt is not a decorative ring: it is {beltCount} bodies propagated from real osculating elements (JPL SBDB), rendered as a GPU point cloud with the Kepler solve running in a Web Worker.',
     },
   },
   {
@@ -152,13 +152,59 @@ export const TOUR_STOPS: TourStop[] = [
     filters: ['tno', 'centaur', 'comet'],
     title: { zh: '13 柯伊伯带与海外天体', en: '13 Kuiper belt and beyond' },
     narration: {
-      zh: '海王星轨道之外是海王星外天体（TNO）、半人马小行星与长周期彗星。本系统中共 1600 个 TNO、500 个半人马小行星与约 1150 颗彗星使用真实轨道根数传播，其中包含 200 个双曲轨道天体。',
-      en: 'Beyond Neptune lie the trans-Neptunian objects, Centaurs and long-period comets. The catalog holds 1 600 TNOs, 500 Centaurs and ~1 150 comets propagated from real elements, including 200 hyperbolic orbits.',
+      zh: '海王星轨道之外是海王星外天体（TNO）、半人马小行星与长周期彗星。本系统中共 {tnoCount} 个 TNO、{centaurCount} 个半人马小行星与 {cometCount} 颗彗星使用真实轨道根数传播，其中包含 {hyperbolicCount} 个双曲轨道天体。',
+      en: 'Beyond Neptune lie the trans-Neptunian objects, Centaurs and long-period comets. The catalog holds {tnoCount} TNOs, {centaurCount} Centaurs and {cometCount} comets propagated from real elements, including {hyperbolicCount} hyperbolic orbits.',
     },
   },
 ]
 
 export const AUTO_DEMO_STOPS = ['sun', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'neptune', 'pluto']
+
+/**
+ * Numbers the narration quotes. They are substituted at render time from the loaded
+ * catalogue, because hard-coding them made the tour contradict its own data: the
+ * asteroid-belt stop claimed "about 11 000 bodies" while its filters
+ * (`mainBelt` + `trojan`) select 6 053, and the Kuiper-belt stop quoted counts that a
+ * data refresh could silently invalidate (§4/§60).
+ */
+export interface TourCounts {
+  marsSatellites: number
+  beltCount: number
+  tnoCount: number
+  centaurCount: number
+  cometCount: number
+  hyperbolicCount: number
+}
+
+/** Derives the narration counts from the generated catalogue statistics. */
+export function tourCountsFromStatistics(
+  statistics: {
+    minorBodiesByBucket: Record<string, number>
+    satellitesByParent: Record<string, number>
+    hyperbolicMinorBodies: number
+  } | null,
+): TourCounts {
+  const buckets = statistics?.minorBodiesByBucket ?? {}
+  const satellites = statistics?.satellitesByParent ?? {}
+  return {
+    marsSatellites: satellites.mars ?? 0,
+    // Exactly the objects the asteroid-belt stop puts on screen.
+    beltCount: (buckets.mainBelt ?? 0) + (buckets.trojan ?? 0),
+    tnoCount: buckets.tno ?? 0,
+    centaurCount: buckets.centaur ?? 0,
+    cometCount: buckets.comet ?? 0,
+    hyperbolicCount: statistics?.hyperbolicMinorBodies ?? 0,
+  }
+}
+
+/** Narration with the catalogue-derived numbers substituted in. */
+export function tourNarration(stop: TourStop, language: 'zh-CN' | 'en-US', counts: TourCounts): string {
+  const template = language === 'zh-CN' ? stop.narration.zh : stop.narration.en
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => {
+    const value = (counts as unknown as Record<string, unknown>)[key]
+    return typeof value === 'number' ? value.toLocaleString('en-US') : match
+  })
+}
 
 /** Seconds without input before the exhibition switches to the auto demo. */
 export const DEFAULT_IDLE_SECONDS = 150

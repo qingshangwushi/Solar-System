@@ -173,6 +173,32 @@ export interface Dictionary {
   visitMoon: string
   zoomIn: string
   zoomOut: string
+  positionUnavailable: string
+  scientificModeOff: string
+  narrationSun: string
+  narrationMercury: string
+  narrationVenus: string
+  narrationEarth: string
+  narrationMars: string
+  narrationJupiter: string
+  narrationSaturn: string
+  narrationUranus: string
+  narrationNeptune: string
+  narrationPluto: string
+  narrationMoon: string
+  narrationGeneric: string
+  resetView: string
+  fullscreen: string
+  orbitPlaneHint: string
+  cometTails: string
+  cometTailHint: string
+  tourRoute: string
+  runtimeErrorTitle: string
+  runtimeErrorDetail: string
+  minorBudgetNote: string
+  loadingTextures: string
+  splashLead: string
+  splashLiveBackground: string
 }
 
 export const zhCN: Dictionary = {
@@ -341,6 +367,32 @@ export const zhCN: Dictionary = {
   visitMoon: '查看月球',
   zoomIn: '放大',
   zoomOut: '缩小',
+  positionUnavailable: '该天体此刻的位置暂不可用，位置与速度不显示推算值。',
+  scientificModeOff: '开启“科学模式”可显示位置计算模式、尺度放大倍率、LOD 与数据来源等科学读数。',
+  narrationSun: '太阳是太阳系唯一的恒星，提供全部主要光照。其质量约占太阳系总质量的 99.86%，自转周期约 609 小时（赤道更快）。',
+  narrationMercury: '水星是距太阳最近的行星，轨道离心率 0.206，表面几乎没有大气，昼夜温差极端。',
+  narrationVenus: '金星拥有浓密的二氧化碳大气与硫酸云层，逆向自转，是太阳系最热的行星表面。',
+  narrationEarth: '地球是目前已知唯一存在液态水海洋与生命的行星，自转轴倾角 23.44°，一颗天然卫星。',
+  narrationMars: '火星表面覆盖氧化铁尘埃，拥有两颗小卫星与太阳系最高的火山。轨道离心率较大，季节变化显著。',
+  narrationJupiter: '木星是太阳系质量最大的行星，自转最快，拥有四颗伽利略卫星与一个暗弱的环系。',
+  narrationSaturn: '土星以壮观的环系著称，环位于赤道面内；土卫六拥有浓密大气，土卫二存在冰下海洋的证据。',
+  narrationUranus: '天王星自转轴几乎与轨道面平行，环与卫星系统随之近乎垂直运行。',
+  narrationNeptune: '海王星是距太阳最远的行星，风速可达超音速；海卫一为逆行轨道，可能为被俘获的柯伊伯带天体。',
+  narrationPluto: '冥王星是柯伊伯带中最著名的矮行星，与冥卫一构成潮汐锁定的双天体系统。',
+  narrationMoon: '月球是地球唯一的天然卫星，轨道半长轴 384 400 km，潮汐锁定使其永远以同一面朝向地球。',
+  narrationGeneric: '该天体由公开轨道根数传播计算，详细参数见“轨道参数”与“物理特性”标签页。',
+  resetView: '复位视角',
+  fullscreen: '全屏',
+  orbitPlaneHint: '轨道面：黄道 J2000',
+  cometTails: '彗发与彗尾',
+  cometTailHint: '尘埃尾沿轨道外侧弯曲，离子尾始终背离太阳。',
+  tourRoute: '{total} 站的导览路线：太阳 → 行星 → 地月系统 → 小行星带 → 巨行星 → 外层太阳系。',
+  runtimeErrorTitle: 'SOLAR SYSTEM / 运行时错误',
+  runtimeErrorDetail: '展项组件发生异常，已阻止整页空白。请重试；若反复出现，请查看控制台堆栈并检查显卡驱动与浏览器硬件加速设置。',
+  minorBudgetNote: '画质档位限制了同时绘制的小天体数量，云中天体为均匀抽样。',
+  loadingTextures: '正在加载行星表面贴图（按画质档位选择分辨率）…',
+  splashLead: '以真实天体历表与轨道根数驱动的三维太阳系。可自由操控时间、视角与尺度，逐层深入太阳、行星、卫星与已编目的小天体世界。',
+  splashLiveBackground: '背景为实时渲染的太阳系场景',
 }
 
 export const enUS: Dictionary = {
@@ -509,6 +561,32 @@ export const enUS: Dictionary = {
   visitMoon: 'Visit the Moon',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
+  positionUnavailable: 'The position of this object is unavailable for the displayed instant; no derived value is shown.',
+  scientificModeOff: 'Enable "Scientific mode" to show the position model, scale magnification, LOD tier and data provenance.',
+  narrationSun: 'The Sun is the only star in the solar system and provides essentially all of its light. It holds about 99.86 % of the system mass and rotates in roughly 609 hours.',
+  narrationMercury: 'Mercury is the innermost planet, with an eccentricity of 0.206 and almost no atmosphere, producing extreme day/night temperature contrasts.',
+  narrationVenus: 'Venus has a dense carbon-dioxide atmosphere and sulphuric-acid clouds, rotates retrograde, and has the hottest planetary surface in the system.',
+  narrationEarth: 'The Earth is the only place known to host liquid-water oceans and life. Its 23.44° axial tilt drives the seasons, and it has one natural satellite.',
+  narrationMars: 'Mars is covered in iron-oxide dust, has two small moons and the tallest volcano in the solar system. Its noticeable eccentricity produces strong seasonal effects.',
+  narrationJupiter: 'Jupiter is the most massive planet and rotates fastest, with four Galilean moons and a faint ring system.',
+  narrationSaturn: 'Saturn is famous for its rings, which lie in the planet equatorial plane. Titan has a dense atmosphere and Enceladus shows evidence of a subsurface ocean.',
+  narrationUranus: 'Uranus rotates almost on its side, so its rings and moons orbit nearly perpendicular to the ecliptic.',
+  narrationNeptune: 'Neptune is the outermost planet, with supersonic winds. Triton orbits retrograde and is probably a captured Kuiper-belt object.',
+  narrationPluto: 'Pluto is the best known dwarf planet of the Kuiper belt and forms a tidally locked pair with Charon.',
+  narrationMoon: 'The Moon is the Earth\'s only natural satellite. Its semi-major axis is 384 400 km and it is tidally locked, so the same face always points at the Earth.',
+  narrationGeneric: 'This body is propagated from published orbital elements; see the Orbit and Physical tabs for its parameters.',
+  resetView: 'Reset view',
+  fullscreen: 'Full screen',
+  orbitPlaneHint: 'Orbit plane: ecliptic J2000',
+  cometTails: 'Coma and tails',
+  cometTailHint: 'The dust tail curves away along the orbit while the ion tail always points away from the Sun.',
+  tourRoute: 'A {total}-stop route: Sun → planets → Earth-Moon → asteroid belt → giant planets → outer system.',
+  runtimeErrorTitle: 'SOLAR SYSTEM / RUNTIME ERROR',
+  runtimeErrorDetail: 'A component failed; the page was kept alive instead of going blank. Retry, and if it recurs check the console stack, the GPU driver and hardware acceleration.',
+  minorBudgetNote: 'The quality level caps how many small bodies are drawn at once; the cloud is an even sample of the filtered set.',
+  loadingTextures: 'Loading planetary surface maps (resolution follows the quality level)…',
+  splashLead: 'A three-dimensional solar system driven by real ephemerides and osculating elements. Control time, camera and scale freely, and explore the Sun, planets, moons and catalogued small bodies.',
+  splashLiveBackground: 'The background is the live solar-system scene',
 }
 
 export const DICTIONARIES: Record<Language, Dictionary> = {

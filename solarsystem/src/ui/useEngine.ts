@@ -32,6 +32,9 @@ export function useEngine(options: {
   minorRuntime: MinorBodyRuntime | null
 }) {
   const engineRef = useRef<SolarSystemEngine | null>(null)
+  const cleanupRef = useRef<(() => void) | null>(null)
+  /** Live reduced-motion appliers, one per engine instance. */
+  const reducedMotionListeners = useRef(new Set<() => void>())
   const store = useAppStore()
 
   const createEngine = useCallback(() => {
@@ -39,6 +42,9 @@ export function useEngine(options: {
     const container = options.containerRef.current
     const { catalog, config } = useAppStore.getState()
     if (!canvas || !container || !catalog || !config) return
+    // Never build a second engine over a live one: two instances would mean two WebGL
+    // contexts, two frame loops and a lost reduced-motion setting.
+    if (engineRef.current) return
 
     // Degrade explicitly instead of crashing: a GPU-less or WebGL-disabled machine
     // gets a readable notice and the rest of the UI stays alive.
@@ -72,6 +78,22 @@ export function useEngine(options: {
 
     engineRef.current = engine
     setEngine(engine)
+    // The loading screen reports the renderer step from this flag; it is set here
+    // because this is the moment a GL context actually exists.
+    useAppStore.getState().setState({ engineReady: true })
+
+    // Reduced motion is applied on every engine instance, not only when the effect
+    // that watches the setting happens to re-run: the constructor resets it from the
+    // configuration, which would otherwise overwrite the operating-system preference.
+    const motionQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null
+    const applyReducedMotion = () => {
+      const configured = useAppStore.getState().config?.reducedMotion ?? false
+      engine.cameraController.setReducedMotion(configured || Boolean(motionQuery?.matches))
+      document.documentElement.dataset.systemReducedMotion = motionQuery?.matches ? 'true' : 'false'
+    }
+    applyReducedMotion()
+    motionQuery?.addEventListener('change', applyReducedMotion)
+    reducedMotionListeners.current.add(applyReducedMotion)
     // Development-only diagnostic handle: lets an on-site technician (or an
     // automated smoke test) inspect the render space without a build step.
     if (import.meta.env.DEV) {
@@ -101,9 +123,17 @@ export function useEngine(options: {
     })
     engine.events.on('cameraModeChanged', ({ mode }) => set({ cameraMode: mode as never }))
     engine.events.on('scaleModeChanged', ({ mode }) => set({ scaleMode: mode as never }))
+    engine.events.on('trackingChanged', ({ id }) => set({ trackedId: (id as string | null) ?? null }))
     engine.events.on('performance', (snapshot) => {
-      // The performance tick is also the cheapest place to refresh the HUD counters.
-      set({ performance: snapshot as never, statistics: engine.statistics() })
+      // The performance tick is also the cheapest place to refresh the HUD counters
+      // and to grow the sparkline history (P2-8).
+      const frameTime = (snapshot as { frameTimeMs?: number }).frameTimeMs ?? 0
+      const history = useAppStore.getState().performanceHistory
+      set({
+        performance: snapshot as never,
+        statistics: engine.statistics(),
+        performanceHistory: [...history.slice(-59), frameTime],
+      })
     })
     engine.events.on('status', ({ level, message }) => {
       useAppStore.getState().pushToast(level, message)
@@ -271,20 +301,36 @@ export function useEngine(options: {
     engine.start()
 
     // ---- idle auto demo ----------------------------------------------------
+    // Any interaction anywhere in the interface — not only on the canvas — counts as
+    // user activity, so tapping a HUD button also resets the idle timer (§32).
+    const markInteractionCapture = () => markInteraction()
+    window.addEventListener('pointerdown', markInteractionCapture, true)
+    window.addEventListener('wheel', markInteractionCapture, { capture: true, passive: true })
+
     const idleTimer = window.setInterval(() => {
       const current = useAppStore.getState()
-      if (!current.config?.autoDemo || current.phase !== 'ready') return
+      const config = current.config
+      if (!config || current.phase !== 'ready') return
       if (current.tourActive) return
+      if (!config.autoDemo && !config.guidedTourOnIdle) return
       const idleSeconds = (performance.now() - interactionAt) / 1000
-      const remaining = Math.max(0, Math.round((current.config.autoDemoDelaySeconds ?? 150) - idleSeconds))
+      const delay = config.autoDemoDelaySeconds ?? 150
+      const remaining = Math.max(0, Math.round(delay - idleSeconds))
       if (remaining !== current.autoDemoCountdown) set({ autoDemoCountdown: remaining })
-      if (idleSeconds >= (current.config.autoDemoDelaySeconds ?? 150) && !current.autoDemoActive) {
-        set({ autoDemoActive: true })
+      if (idleSeconds < delay) return
+      if (config.guidedTourOnIdle) {
+        // "Return to the guided tour when idle" is a separate switch from the auto
+        // demo, and is honoured first (previously it had no consumer at all).
+        if (!current.tourOpenRequested) set({ tourOpenRequested: true, tourActive: true, tourStep: 0 })
+        return
       }
+      if (!current.autoDemoActive) set({ autoDemoActive: true })
     }, 1000)
 
-    engineInstanceCleanup = () => {
+    const cleanup = () => {
       window.clearInterval(idleTimer)
+      window.removeEventListener('pointerdown', markInteractionCapture, true)
+      window.removeEventListener('wheel', markInteractionCapture, true)
       observer.disconnect()
       canvas.removeEventListener('pointerdown', onPointerDown)
       canvas.removeEventListener('pointermove', onPointerMove)
@@ -293,27 +339,46 @@ export function useEngine(options: {
       canvas.removeEventListener('wheel', onWheel)
       if (keyDown) window.removeEventListener('keydown', keyDown)
       window.removeEventListener('keyup', onKeyUp)
+      motionQuery?.removeEventListener('change', applyReducedMotion)
+      reducedMotionListeners.current.delete(applyReducedMotion)
     }
+    cleanupRef.current = cleanup
   }, [options.canvasRef, options.containerRef, options.minorRuntime])
 
-  let engineInstanceCleanup: (() => void) | null = null
+
+  const catalogReady = store.catalog !== null
 
   useEffect(() => {
-    if (store.phase !== 'ready') return
+    // The engine is created as soon as the catalog is in memory, which is while the
+    // splash screen is still up: the title screen then has a real, running 3D
+    // background instead of a static black rectangle (§30), and entering the
+    // exhibition is instantaneous.
+    if (!catalogReady) return
     createEngine()
     return () => {
-      engineInstanceCleanup?.()
-      engineInstanceCleanup = null
+      cleanupRef.current?.()
+      cleanupRef.current = null
       engineRef.current?.dispose()
       engineRef.current = null
       setEngine(null)
+      useAppStore.getState().setState({ engineReady: false })
       if (import.meta.env.DEV) {
         delete (window as unknown as Record<string, unknown>).__solarSystemEngine
       }
     }
-    // Re-created only when the phase flips to ready; the engine owns everything else.
+    // Re-created only when the catalog becomes available; the engine owns everything
+    // else.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.phase, createEngine])
+  }, [catalogReady, createEngine])
+
+  // ---- prefers-reduced-motion -------------------------------------------------
+  useEffect(() => {
+    // The operating system preference must reach the camera as well as the CSS, or a
+    // visitor who asked for reduced motion still gets a 4.5 s fly-through (P2-11).
+    // `createEngine` installs an applier per engine instance; this effect pushes a
+    // later configuration change into every live instance.
+    for (const apply of reducedMotionListeners.current) apply()
+  }, [store.config?.reducedMotion, store.engineReady])
 
   // ---- guided tour ---------------------------------------------------------
   useEffect(() => {

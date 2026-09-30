@@ -12,7 +12,7 @@ import type { EngineStatistics, MinorBodyRuntime } from '../engine/SolarSystemEn
 import { MINOR_BODY_FILTERS } from '../engine/SolarSystemEngine'
 import { SCALE_MODES, type ScaleMode } from '../data/ScaleModel'
 import type { CameraMode } from '../engine/CameraController'
-import type { QualityLevel } from '../engine/QualityController'
+import { QUALITY_PROFILES, type QualityLevel } from '../engine/QualityController'
 import type { Translate } from '../i18n'
 import type { CatalogStatistics } from '../types/catalog'
 
@@ -35,6 +35,11 @@ export interface HudProps {
   atmosphereVisible: boolean
   activeFilters: string[]
   scientificMode: boolean
+  /**
+   * False when `enableScientificMode` is disabled in exhibition.config.json; the
+   * toggle is then hidden instead of being shown as a dead control (P1-4).
+   */
+  scientificModeAvailable: boolean
   showPerformance: boolean
   statistics: EngineStatistics | null
   catalogStatistics: CatalogStatistics | null
@@ -255,11 +260,13 @@ export function Hud(props: HudProps) {
             {t('layers')}
           </button>
 
-          <span className="chip" data-active={props.scientificMode}>
-            <button type="button" onClick={() => props.onToggleScientific()} style={{ color: 'inherit' }}>
-              {t('scientificMode')}
-            </button>
-          </span>
+          {props.scientificModeAvailable && (
+            <span className="chip" data-active={props.scientificMode}>
+              <button type="button" onClick={() => props.onToggleScientific()} style={{ color: 'inherit' }}>
+                {t('scientificMode')}
+              </button>
+            </span>
+          )}
         </div>
 
         {scaleWarning && (
@@ -357,11 +364,21 @@ export function Hud(props: HudProps) {
             <dt>{t('statStars')}</dt>
             <dd>{props.catalogStatistics ? props.catalogStatistics.stars.toLocaleString('en-US') : '—'}</dd>
           </div>
+          {QUALITY_PROFILES[props.quality].maxMinorBodies < (props.catalogStatistics?.minorBodies ?? 0) && (
+            // Disclose the quality budget instead of silently drawing fewer objects.
+            <p className="note">{t('minorBudgetNote')}</p>
+          )}
           <p className="note">{t('dragHint')} · {t('pinchHint')} · {t('keysHint')}</p>
         </aside>
       )}
 
-      {jumpError && <span className="toast" data-level="warn" style={{ position: 'absolute', bottom: '0.6rem', left: '50%', transform: 'translateX(-50%)' }}>{t('jumpInvalid')}</span>}
+      {jumpError && (
+        // Anchored above the console and click-through, so a rejected date can never
+        // intercept a control the visitor is reaching for (P1-2).
+        <span className="hud__notice toast" data-level="warn">
+          {t('jumpInvalid')}
+        </span>
+      )}
     </div>
   )
 }

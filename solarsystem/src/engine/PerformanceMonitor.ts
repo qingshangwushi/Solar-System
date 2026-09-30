@@ -15,6 +15,9 @@ export interface PerformanceSnapshot {
   visibleObjects: number
   textureMb: number
   geometryMb: number
+  /** Live GPU resource counts, as reported by the renderer's info object. */
+  textureCount: number
+  geometryCount: number
   workerTimeMs: number
   orbitUpdateMs: number
   positionUpdateMs: number
@@ -58,6 +61,8 @@ export class PerformanceMonitor {
     visibleObjects: number
     textureMb: number
     geometryMb: number
+    textureCount: number
+    geometryCount: number
     labels: number
     qualityLevel: string
   }): PerformanceSnapshot {
@@ -77,6 +82,8 @@ export class PerformanceMonitor {
       visibleObjects: extra.visibleObjects,
       textureMb: extra.textureMb,
       geometryMb: extra.geometryMb,
+      textureCount: extra.textureCount,
+      geometryCount: extra.geometryCount,
       labels: extra.labels,
       qualityLevel: extra.qualityLevel,
       workerTimeMs: this.lastWorkerTime,

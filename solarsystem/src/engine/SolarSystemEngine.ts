@@ -22,6 +22,7 @@ import { SimulationClock, parseTimeInput } from '../astronomy/TimeSystem'
 import { AstronomyEngineEphemerisSource } from '../astronomy/Ephemeris'
 import { GM_SUN_KM3_S2, J2000_JD } from '../astronomy/Constants'
 import { AU_KM, SECONDS_PER_DAY, formatDistance } from '../astronomy/Units'
+import { normalizeVec3 } from '../astronomy/Coordinates'
 import { PositionResolver } from './PositionResolver'
 import { createScaleTransform, type ScaleMode, type ScaleTransform } from '../data/ScaleModel'
 import { CameraController, type CameraMode } from './CameraController'
@@ -29,6 +30,13 @@ import { SceneRenderer } from './Renderer'
 import { BodyVisual } from '../render/BodyRenderer'
 import { OrbitRenderer, type OrbitColourKey } from '../render/OrbitRenderer'
 import { MinorBodyRenderer, type MinorBodyRenderItem } from '../render/MinorBodyRenderer'
+import {
+  CometRenderer,
+  cometActivity,
+  COMET_ACTIVITY_LIMIT_AU,
+  MAX_ACTIVE_COMETS,
+  type ActiveComet,
+} from '../render/CometRenderer'
 import { StarFieldRenderer } from '../render/StarFieldRenderer'
 import { LabelRenderer, type LabelCandidate } from './LabelRenderer'
 import { RenderOrigin } from './FloatingOrigin'
@@ -39,6 +47,7 @@ import { PerformanceMonitor } from './PerformanceMonitor'
 import { TextureProvider } from '../data/TextureProvider'
 import { sampleOrbitPath, meanMotionFromPeriodDays } from '../astronomy/OrbitPropagator'
 import { orbitalSpeedKmS } from '../astronomy/KeplerSolver'
+import { propagateMinorBodyKm } from '../astronomy/MinorBodyPropagator'
 import type { MinorBodyBucket, MinorBodyRecord } from '../types/catalog'
 
 export interface MinorBodyRuntime {
@@ -91,6 +100,8 @@ export class SolarSystemEngine {
   private readonly textures: TextureProvider
   private readonly orbitRenderer = new OrbitRenderer()
   private readonly minorBodyRenderer: MinorBodyRenderer | null
+  private readonly cometRenderer: CometRenderer | null
+  private readonly activeComets: ActiveComet[] = []
   private readonly starRenderer: StarFieldRenderer | null
   private readonly labelRenderer: LabelRenderer
   private readonly worker = new OrbitWorkerClient()
@@ -102,6 +113,13 @@ export class SolarSystemEngine {
   private readonly sunDirectionScene = new Vector3(-1, 0, 0)
   private readonly visuals = new Map<string, BodyVisual>()
   private readonly minorItems: MinorBodyRenderItem[] = []
+  /**
+   * Record index -> render item. Keeps selection and description O(1) instead of a
+   * linear scan over ~11 000 objects (§38), and is the lookup the on-demand
+   * propagation path uses when the cloud itself is hidden.
+   */
+  private readonly minorItemByIndex = new Map<number, MinorBodyRenderItem>()
+  private readonly reportedTextureFallbacks = new Set<string>()
   private readonly minorRecordIndexBySlot: Int32Array | null
 
   private selectedId: string | null = null
@@ -140,9 +158,14 @@ export class SolarSystemEngine {
     this.renderer.setContextRestoredHandler(() => {
       // Rebuild GPU state after the browser recreated the context; nothing is
       // faked by reloading the page.
+      this.orbitRenderer.removeAllLocalPaths()
       for (const visual of this.visuals.values()) visual.dispose()
       this.visuals.clear()
       this.createBodyVisuals()
+      // Local paths were removed with their old parent groups; rebuild them against
+      // the fresh ones so a selected moon keeps its trajectory.
+      this.localPathSpecs.clear()
+      if (this.selectedId) this.showOrbitFor(this.selectedId)
       this.events.emit('contextRestored', {})
     })
 
@@ -165,21 +188,30 @@ export class SolarSystemEngine {
     if (options.minorBodies) {
       this.minorBodyRenderer = new MinorBodyRenderer()
       this.renderer.scene.add(this.minorBodyRenderer.points)
+      // Coma and tails are drawn for the comets in the cloud that are actually close
+      // enough to the Sun to sublimate (§19).
+      this.cometRenderer = new CometRenderer()
+      this.renderer.scene.add(this.cometRenderer.group)
       this.minorRecordIndexBySlot = options.minorBodies.subsetRecordIndices
       this.worker.init(options.minorBodies.elements, options.minorBodies.subset, GM_SUN_KM3_S2)
       const records = options.minorBodies.records
       for (let slot = 0; slot < records.length; slot++) {
         const record = records[slot]
-        this.minorItems.push({
+        const item: MinorBodyRenderItem = {
           index: this.minorRecordIndexBySlot[slot] ?? slot,
           bucket: record.bucket,
           absoluteMagnitude: record.absoluteMagnitude,
           diameterKm: record.diameterKm,
           positionKm: { x: 0, y: 0, z: 0 },
-        })
+          positionValid: false,
+          positionJulianDate: Number.NaN,
+        }
+        this.minorItems.push(item)
+        this.minorItemByIndex.set(item.index, item)
       }
     } else {
       this.minorBodyRenderer = null
+      this.cometRenderer = null
       this.minorRecordIndexBySlot = null
     }
 
@@ -270,6 +302,8 @@ export class SolarSystemEngine {
       this.cameraController.setTrackedRadius(trackedState.radiusUnits)
       this.cameraController.placeRelativeToTarget(trackedState.absoluteUnits, framingRatio)
     } else {
+      // `frameOverview` releases the camera lock *and* the selection, so the panel
+      // and the HUD stop claiming a target the camera has left (P2-6).
       this.frameOverview()
     }
     this.events.emit('scaleModeChanged', { mode })
@@ -313,11 +347,14 @@ export class SolarSystemEngine {
   }
 
   selectBody(id: string): void {
-    if (this.selectedId === id) return
-    this.showOrbitFor(id)
+    const alreadySelected = this.selectedId === id
+    // Re-selecting the same body must be able to restore the camera lock, so the
+    // early return only skips the expensive path rebuild (P2-6).
+    if (!alreadySelected) this.showOrbitFor(id)
     this.selectedId = id
     this.trackedId = id
-    this.events.emit('selectionChanged', { id })
+    this.cameraController.externalTargets.clear()
+    if (!alreadySelected) this.events.emit('selectionChanged', { id })
     this.events.emit('trackingChanged', { id })
   }
 
@@ -326,9 +363,16 @@ export class SolarSystemEngine {
     if (this.selectedMinorIndex !== null) {
       this.hideMinorBodyOrbit(this.selectedMinorIndex)
     }
+    const minorKey = this.selectedMinorIndex === null ? null : `minor:${this.selectedMinorIndex}`
+    if (minorKey) this.cameraController.externalTargets.delete(minorKey)
     this.selectedId = null
     this.selectedMinorIndex = null
+    // Releasing the selection also releases the camera lock, so the HUD target
+    // indicator and the camera can never disagree (P2-6).
+    this.trackedId = null
+    this.cameraController.trackedId = null
     this.events.emit('selectionChanged', { id: null })
+    this.events.emit('trackingChanged', { id: null })
   }
 
   get selectedMinorBodyIndex(): number | null {
@@ -336,22 +380,63 @@ export class SolarSystemEngine {
   }
 
   /**
+   * Returns the render item of a minor body with a position that is valid *for the
+   * current simulation instant*.
+   *
+   * When the cloud layer is off, or when the record is filtered out of the render
+   * subset, no worker propagation has touched this object. Rather than reporting the
+   * (0,0,0) placeholder — which showed up as "0 km from the Sun, 515 194 km/s" — the
+   * position is propagated on demand with the same Kepler solver the worker uses
+   * (P0-4). Returns null only when the object is genuinely absent from the payload.
+   */
+  private ensureMinorBodyPosition(recordIndex: number): MinorBodyRenderItem | null {
+    const item = this.minorItemByIndex.get(recordIndex)
+    if (!item) return null
+    if (item.positionValid && Math.abs(item.positionJulianDate - this.clock.jd) < 1e-9) return item
+    const elements = this.minorRuntime?.elements
+    if (!elements) return null
+    const position = propagateMinorBodyKm(elements, recordIndex, this.clock.jd)
+    if (!position) return null
+    item.positionKm.x = position.x
+    item.positionKm.y = position.y
+    item.positionKm.z = position.z
+    item.positionValid = true
+    item.positionJulianDate = this.clock.jd
+    return item
+  }
+
+  /**
    * Selects a minor body: highlights it, draws its trajectory and moves the camera.
-   * The position comes from the worker cloud, so no additional propagation is done.
+   * The position comes from the worker cloud when the cloud is live and from an
+   * on-demand propagation otherwise, so the flight always has a real destination.
    */
   selectMinorBody(recordIndex: number): boolean {
-    const items = this.minorItemsForRender ?? this.minorItems
-    const item = items.find((entry) => entry.index === recordIndex)
-    if (!item) return false
+    const record = this.minorRuntime?.records[recordIndex]
+    if (!record) return false
+    const item = this.ensureMinorBodyPosition(recordIndex)
     this.selectedId = null
+    this.trackedId = null
     this.selectedMinorIndex = recordIndex
-    const warped = this.scale.positionKmToUnits(item.positionKm)
-    const radiusKm = item.diameterKm && item.diameterKm > 0 ? item.diameterKm / 2 : 1
-    this.cameraController.flyTo({
-      id: `minor:${recordIndex}`,
-      absoluteUnits: warped,
-      radiusUnits: this.scale.radiusKmToUnits(radiusKm),
-    })
+    if (item) {
+      const warped = this.scale.positionKmToUnits(item.positionKm)
+      const radiusKm = item.diameterKm && item.diameterKm > 0 ? item.diameterKm / 2 : 1
+      const radiusUnits = this.scale.radiusKmToUnits(radiusKm)
+      const target = { id: `minor:${recordIndex}`, absoluteUnits: warped, radiusUnits }
+      // Register the target with the controller so the transition and the tracking
+      // that follows it are evaluated against the object's real position rather
+      // than collapsing onto the origin.
+      this.cameraController.externalTargets.set(target.id, target)
+      this.cameraController.flyTo(target)
+      if (this.cameraController.mode === 'overview' || this.cameraController.mode === 'free') {
+        this.cameraController.setMode('orbit')
+        this.events.emit('cameraModeChanged', { mode: 'orbit' })
+      }
+    } else {
+      this.events.emit('status', {
+        level: 'warn',
+        message: this.language === 'zh-CN' ? '该天体的轨道位置暂不可用' : 'orbital position unavailable for this object',
+      })
+    }
     void this.showMinorBodyOrbit(recordIndex)
     this.events.emit('selectionChanged', { id: `minor:${recordIndex}` })
     return true
@@ -361,18 +446,21 @@ export class SolarSystemEngine {
   describeMinorBody(recordIndex: number): MinorBodyDescription | null {
     const record = this.minorRuntime?.records[recordIndex]
     if (!record) return null
-    const items = this.minorItemsForRender ?? this.minorItems
-    const item = items.find((entry) => entry.index === recordIndex)
-    if (!item) return null
+    const item = this.ensureMinorBodyPosition(recordIndex)
+    const julianDate = this.clock.jd
+    if (!item) {
+      return { record, julianDate, positionKnown: false, heliocentricKm: null, distanceFromSunKm: null, speedKmS: null }
+    }
     const position = item.positionKm
     const distanceFromSunKm = Math.hypot(position.x, position.y, position.z)
-    const recordIndexInBuffer = recordIndex
     return {
       record,
+      julianDate,
+      positionKnown: true,
       heliocentricKm: position,
       distanceFromSunKm,
       // Two-body speed from GM_sun and the current radius (vis-viva).
-      speedKmS: orbitalSpeedKmS(GM_SUN_KM3_S2, Math.max(1, distanceFromSunKm), this.minorSemiMajorAxisKm(recordIndexInBuffer)),
+      speedKmS: orbitalSpeedKmS(GM_SUN_KM3_S2, Math.max(1, distanceFromSunKm), this.minorSemiMajorAxisKm(recordIndex)),
     }
   }
 
@@ -381,11 +469,93 @@ export class SolarSystemEngine {
     const eccentricity = this.minorRuntime?.elements[recordIndex * 8 + 1] ?? 0
     if (!(qAu > 0) || eccentricity >= 1) {
       // Hyperbolic: fall back to the current heliocentric distance.
-      const items = this.minorItemsForRender ?? this.minorItems
-      const item = items.find((entry) => entry.index === recordIndex)
+      const item = this.minorItemByIndex.get(recordIndex)
       return item ? Math.hypot(item.positionKm.x, item.positionKm.y, item.positionKm.z) : AU_KM
     }
     return (qAu * AU_KM) / (1 - eccentricity)
+  }
+
+  /**
+   * Builds the active-comet list for this frame: the comets in the drawn cloud that
+   * are inside the sublimation limit, most active first. Velocity comes from a
+   * one-step finite difference of the same propagator the cloud uses, which is cheap
+   * because only the handful of active comets is evaluated.
+   */
+  private updateComets(): void {
+    const renderer = this.cometRenderer
+    if (!renderer) return
+    if (!this.minorVisible) {
+      renderer.setVisible(false)
+      this.activeComets.length = 0
+      return
+    }
+    renderer.setProjectionScale(
+      this.renderer.viewport.height,
+      this.renderer.camera.fov,
+      this.renderer.renderer.getPixelRatio(),
+    )
+    const elements = this.minorRuntime?.elements
+    const items = this.minorItemsForRender ?? this.minorItems
+    this.activeComets.length = 0
+    if (elements) {
+      const limitKm = COMET_ACTIVITY_LIMIT_AU * AU_KM
+      for (const item of items) {
+        if (item.bucket !== 'comet' || !item.positionValid) continue
+        const position = item.positionKm
+        const distanceKm = Math.hypot(position.x, position.y, position.z)
+        if (!(distanceKm > 0) || distanceKm > limitKm) continue
+        const activity = cometActivity(distanceKm / AU_KM)
+        if (activity <= 0) continue
+        // Velocity by central difference over one day: exact enough for the tail
+        // direction and independent of the frame rate.
+        const before = propagateMinorBodyKm(elements, item.index, this.clock.jd - 0.5)
+        const after = propagateMinorBodyKm(elements, item.index, this.clock.jd + 0.5)
+        if (!before || !after) continue
+        const velocity = normalizeVec3({
+          x: after.x - before.x,
+          y: after.y - before.y,
+          z: after.z - before.z,
+        })
+        this.activeComets.push({
+          nucleusKm: { x: position.x, y: position.y, z: position.z },
+          sunward: normalizeVec3({ x: -position.x, y: -position.y, z: -position.z }),
+          velocity,
+          activity,
+        })
+      }
+      if (this.activeComets.length > MAX_ACTIVE_COMETS) {
+        this.activeComets.sort((a, b) => b.activity - a.activity)
+        this.activeComets.length = MAX_ACTIVE_COMETS
+      }
+    }
+    renderer.update(this.activeComets, this.origin, this.scale)
+    renderer.setVisible(true)
+  }
+
+  /** Diagnostics: how many comets currently show a coma and tails. */
+  get activeCometCount(): number {
+    return this.activeComets.length
+  }
+
+  /**
+   * Keeps the camera's external target in sync with the selected minor body, so the
+   * fly-to and the subsequent tracking follow the object instead of the origin.
+   */
+  private updateMinorCameraTarget(): void {
+    const activeId = this.cameraController.trackedId
+    if (!activeId || !activeId.startsWith('minor:')) return
+    const recordIndex = Number(activeId.slice('minor:'.length))
+    const item = this.ensureMinorBodyPosition(recordIndex)
+    if (!item) {
+      this.cameraController.externalTargets.delete(activeId)
+      return
+    }
+    const radiusKm = item.diameterKm && item.diameterKm > 0 ? item.diameterKm / 2 : 1
+    this.cameraController.externalTargets.set(activeId, {
+      id: activeId,
+      absoluteUnits: this.scale.positionKmToUnits(item.positionKm),
+      radiusUnits: this.scale.radiusKmToUnits(radiusKm),
+    })
   }
 
   /** Selects a body and performs the cinematic transition. */
@@ -430,6 +600,8 @@ export class SolarSystemEngine {
   setMinorBodiesVisible(visible: boolean): void {
     this.minorVisible = visible && this.minorRuntime !== null
     this.minorBodyRenderer?.setVisible(this.minorVisible)
+    // The comet coma/tails belong to the same layer.
+    this.cometRenderer?.setVisible(this.minorVisible)
   }
 
   toggleFilter(key: string): void {
@@ -450,29 +622,51 @@ export class SolarSystemEngine {
     if (!active) return
 
     const all = this.minorRuntime.records
-    const subsetSlots: number[] = []
-    const subsetRecordIndices: number[] = []
+    const candidateSlots: number[] = []
+    const candidateRecordIndices: number[] = []
     for (let slot = 0; slot < this.minorRuntime.subset.length; slot++) {
       const recordIndex = this.minorRuntime.subsetRecordIndices[slot]
       const record = all[recordIndex]
       if (!record) continue
       if (!this.minorFilters.has(record.bucket)) continue
-      subsetSlots.push(slot)
-      subsetRecordIndices.push(recordIndex)
+      candidateSlots.push(slot)
+      candidateRecordIndices.push(recordIndex)
+    }
+    /**
+     * The quality profile caps how many small bodies are drawn at once. The filtered
+     * set is sampled with a constant stride rather than truncated, so the cloud keeps
+     * representing the whole orbital distribution instead of one arbitrary end of it
+     * (P2-9: `maxMinorBodies` previously had no consumer).
+     */
+    const budget = Math.max(1, this.quality.profile.maxMinorBodies)
+    const stride = Math.max(1, Math.ceil(candidateRecordIndices.length / budget))
+    const subsetSlots: number[] = []
+    const sampledRecordIndices: number[] = []
+    for (let index = 0; index < candidateRecordIndices.length; index += stride) {
+      subsetSlots.push(candidateSlots[index])
+      sampledRecordIndices.push(candidateRecordIndices[index])
     }
     // Build a filtered item list in place so the renderer keeps its buffers.
-    const filtered: MinorBodyRenderItem[] = subsetSlots.map((_slot, position) => {
-      const recordIndex = subsetRecordIndices[position]
+    const filtered: MinorBodyRenderItem[] = sampledRecordIndices.map((recordIndex) => {
       const record = all[recordIndex]
+      const existing = this.minorItemByIndex.get(recordIndex)
       return {
         index: recordIndex,
         bucket: record.bucket,
         absoluteMagnitude: record.absoluteMagnitude,
         diameterKm: record.diameterKm,
-        positionKm: { x: 0, y: 0, z: 0 },
+        positionKm: existing?.positionKm ?? { x: 0, y: 0, z: 0 },
+        // Positions were propagated for the previous subset, not for this one.
+        positionValid: false,
+        positionJulianDate: Number.NaN,
       }
     })
     this.minorItemsForRender = filtered
+    this.minorItemByIndex.clear()
+    for (const item of this.minorItems) this.minorItemByIndex.set(item.index, item)
+    for (const item of filtered) this.minorItemByIndex.set(item.index, item)
+    // Force the next frame to re-propagate the new subset, even while paused.
+    this.lastMinorUpdateJulianDate = Number.NaN
     this.minorOpacity = 0.9
     this.minorBodyRenderer.setOpacity(this.minorOpacity)
     this.worker.setSubset(Int32Array.from(subsetSlots))
@@ -495,12 +689,42 @@ export class SolarSystemEngine {
     this.quality.setProfile(level, manual)
     this.textures.setQuality(level)
     this.applyQuality()
+    // The new profile's minor-body budget has to be applied to the live cloud.
+    if (this.minorFilters.size > 0) this.rebuildMinorSubset()
   }
 
   private applyQuality(): void {
     const profile = this.quality.profile
     this.renderer.applyQuality(profile, typeof window === 'undefined' ? 1 : window.devicePixelRatio)
     this.starRenderer?.setStarBudget(profile.starCount)
+  }
+
+  /**
+   * Loads the surface maps of every body that declares one, reporting real
+   * progress. Called from the loading screen so the "loading planetary textures"
+   * step is genuine work instead of a label shown after the fact (§57): until this
+   * point the maps have deliberately not been downloaded.
+   */
+  async warmUpTextures(onProgress?: (loaded: number, total: number) => void): Promise<number> {
+    const targets: CelestialBody[] = []
+    for (const state of this.resolver.states()) {
+      const visual = this.visuals.get(state.id)
+      if (!visual) continue
+      if (!state.body.textures?.map) continue
+      if (visual.hasTexturedMesh) continue
+      if (visual.needsTexture) visual.markTextureRequested()
+      targets.push(state.body)
+    }
+    let loaded = 0
+    onProgress?.(0, targets.length)
+    for (const body of targets) {
+      const maps = await this.textures.loadBodyTextures(body)
+      if (this.disposed) break
+      this.visuals.get(body.id)?.applyTextures(maps)
+      loaded += 1
+      onProgress?.(loaded, targets.length)
+    }
+    return loaded
   }
 
   /**
@@ -516,7 +740,7 @@ export class SolarSystemEngine {
       if (au > maximumAu) maximumAu = au
     }
     const units = this.scale.distanceKmToUnits(maximumAu * AU_KM * 1.12)
-    this.trackedId = null
+    this.releaseTracking()
     this.cameraController.setOverviewDistance(units)
     this.cameraController.setMode('overview')
     // Immediate placement: a damped transition would show the Sun filling the frame
@@ -527,11 +751,32 @@ export class SolarSystemEngine {
   /** Frames the outer solar system, out to the Kuiper belt. */
   frameOuterSystem(): void {
     const units = this.scale.distanceKmToUnits(48 * AU_KM)
-    this.trackedId = null
+    this.releaseTracking()
     this.cameraController.setOverviewDistance(units)
     this.cameraController.setMode('overview')
     this.cameraController.placeAt(units, 0.9, 0.5)
     this.events.emit('cameraModeChanged', { mode: 'overview' })
+  }
+
+  /**
+   * Drops the camera lock and the selection together. The HUD "locked target"
+   * indicator is derived from this state, so the two can no longer disagree: a
+   * framing command that moves the camera away from a body must also clear the
+   * selection that claims it is still being tracked (P2-6).
+   */
+  private releaseTracking(): void {
+    const changed = this.trackedId !== null || this.selectedId !== null || this.selectedMinorIndex !== null
+    if (this.selectedId) this.hideOrbitFor(this.selectedId)
+    if (this.selectedMinorIndex !== null) this.hideMinorBodyOrbit(this.selectedMinorIndex)
+    this.trackedId = null
+    this.cameraController.trackedId = null
+    this.cameraController.externalTargets.clear()
+    if (this.selectedId !== null || this.selectedMinorIndex !== null) {
+      this.selectedId = null
+      this.selectedMinorIndex = null
+      this.events.emit('selectionChanged', { id: null })
+    }
+    if (changed) this.events.emit('trackingChanged', { id: null })
   }
 
   /**
@@ -582,6 +827,7 @@ export class SolarSystemEngine {
     let bestIndex: number | null = null
     let bestSeparation = Number.POSITIVE_INFINITY
     for (const item of items) {
+      if (!item.positionValid) continue
       const warped = this.scale.positionKmToUnits(item.positionKm)
       const projected = this.pickScratch
         .set(warped.x - cameraPosition.x, warped.y - cameraPosition.y, warped.z - cameraPosition.z)
@@ -643,7 +889,9 @@ export class SolarSystemEngine {
       radiusMagnification: this.scale.radiusMagnification(state.radiusKm),
       projectedRadiusPixels: this.project(state).pixels,
       lodTier: this.visuals.get(id)?.tier ?? 'point',
-      proceduralSurface: this.visuals.get(id)?.hasTexturedMesh ? false : !body.textures?.map,
+      // The disclosure must follow what is actually on the GPU, not what the catalog
+      // declares: a declared map that failed to load is still a procedural surface.
+      proceduralSurface: this.visuals.get(id)?.hasProceduralSurface ?? !body.textures?.map,
     }
   }
 
@@ -752,6 +1000,8 @@ export class SolarSystemEngine {
             item.positionKm.x = positions[slot * 3]
             item.positionKm.y = positions[slot * 3 + 1]
             item.positionKm.z = positions[slot * 3 + 2]
+            item.positionValid = true
+            item.positionJulianDate = julianDate
           }
           this.lastMinorUpdateJulianDate = julianDate
         } catch (error) {
@@ -768,6 +1018,7 @@ export class SolarSystemEngine {
     const positionMs = performance.now() - positionStart
 
     // 4. camera + floating origin (the origin is the camera's own position)
+    this.updateMinorCameraTarget()
     this.cameraController.update(deltaSeconds, this.resolver.statesAsMap())
     this.origin.updateUnits(this.cameraController.absolutePosition)
 
@@ -783,14 +1034,30 @@ export class SolarSystemEngine {
         sunDirectionScene: this.sunDirectionScene,
         projectedRadiusPixels: projected.pixels,
         cameraDistanceUnits: projected.distance,
-        showAtmosphere: this.atmosphereVisible,
+        // The profile's `atmosphere` flag is a real consumer of the layer switch: an
+        // atmosphere shell is only drawn when the visitor asked for it AND the
+        // active quality level can afford it (P2-9).
+        showAtmosphere: this.atmosphereVisible && this.quality.profile.atmosphere,
         nowSecondsSinceJ2000,
       })
       this.placeVisual(state, visual)
       if (!visual.hasTexturedMesh && visual.needsTexture && projected.pixels >= 5) {
         visual.markTextureRequested()
         void this.textures.loadBodyTextures(state.body).then((maps) => {
-          if (!this.disposed) visual.applyTextures(maps)
+          if (this.disposed) return
+          visual.applyTextures(maps)
+          // A declared map that failed to load is disclosed instead of being passed
+          // off as published imagery (P0-1).
+          if (maps.procedural && state.body.textures?.map && !this.reportedTextureFallbacks.has(state.id)) {
+            this.reportedTextureFallbacks.add(state.id)
+            this.events.emit('status', {
+              level: 'warn',
+              message:
+                this.language === 'zh-CN'
+                  ? `${this.displayName(state.body)}：表面贴图加载失败，已改用程序化贴图`
+                  : `${state.body.name}: surface map unavailable, using a procedural surface`,
+            })
+          }
         })
       }
     }
@@ -804,6 +1071,7 @@ export class SolarSystemEngine {
       this.minorBodyRenderer.update(this.minorItemsForRender ?? this.minorItems, this.origin, this.scale)
       this.minorBodyRenderer.setVisible(this.minorVisible)
     }
+    this.updateComets()
     this.updateLabels(julianDate)
 
     // 7. render
@@ -819,6 +1087,7 @@ export class SolarSystemEngine {
     if (this.quality.profile.level !== previousQuality) {
       this.applyQuality()
       this.textures.setQuality(this.quality.profile.level)
+      if (this.minorFilters.size > 0) this.rebuildMinorSubset()
       this.events.emit('status', {
         level: 'info',
         message: `quality adjusted to ${this.quality.profile.level}`,
@@ -1107,9 +1376,8 @@ export class SolarSystemEngine {
   }
 
   private labelWorldPositionOfMinor(recordIndex: number): Vector3 {
-    const items = this.minorItemsForRender ?? this.minorItems
-    const item = items.find((entry) => entry.index === recordIndex)
-    if (!item) return new Vector3(0, 0, 0)
+    const item = this.minorItemByIndex.get(recordIndex)
+    if (!item || !item.positionValid) return new Vector3(0, 0, 0)
     const warped = this.scale.positionKmToUnits(item.positionKm)
     const camera = this.origin.originUnits
     return new Vector3(warped.x - camera.x, warped.y - camera.y, warped.z - camera.z)
@@ -1151,6 +1419,7 @@ export class SolarSystemEngine {
     this.visuals.clear()
     this.orbitRenderer.dispose()
     this.minorBodyRenderer?.dispose()
+    this.cometRenderer?.dispose()
     this.starRenderer?.dispose()
     this.labelRenderer.dispose()
     this.textures.dispose()
@@ -1180,9 +1449,13 @@ export interface BodyDescription {
 
 export interface MinorBodyDescription {
   record: MinorBodyRecord
-  heliocentricKm: { x: number; y: number; z: number }
-  distanceFromSunKm: number
-  speedKmS: number
+  /** Simulation instant these values refer to. */
+  julianDate: number
+  /** False when no propagation has produced a position for the current instant. */
+  positionKnown: boolean
+  heliocentricKm: { x: number; y: number; z: number } | null
+  distanceFromSunKm: number | null
+  speedKmS: number | null
 }
 
 export interface EngineStatistics {

@@ -59,7 +59,13 @@ y轴          = z轴 × x轴
 
 ### 2.4 场景帧中的黄道旋转组合
 
-`BodyRenderer.eclipticMat3ToScene(M) = ECLIPTIC_TO_SCENE · M · SCENE_TO_ECLIPTIC`（`src/render/BodyRenderer.ts`）。天体朝向矩阵先在黄道帧构造，再经此共轭变换进入场景帧，最后转四元数施加到 `BodyVisual.frame`。
+**所有渲染坐标都在场景帧内产生**：`ScaleModel.positionKmToUnits()` 先把日心黄道向量乘以 `ECLIPTIC_TO_SCENE` 再做径向映射（旋转与径向缩放可交换），`unitsToKmVector()` 施加逆变换；因此位置、轨道折线、小天体点云、浮动原点全部处于同一帧（Y 向上、黄道面即 XZ 平面）。任何以黄道帧表达的旋转只需**左乘**帧变换：
+
+`BodyRenderer.bodyFrameMat3ToScene(M) = ECLIPTIC_TO_SCENE · M`（`src/render/BodyRenderer.ts`），随后转四元数施加到 `BodyVisual.frame`，其局部 +Z 即天体自转轴。
+
+> 历史记录：首版实现把天体姿态写成共轭 `ECLIPTIC_TO_SCENE · M · SCENE_TO_ECLIPTIC`，而位置并未旋入场景帧，导致极轴被映射进赤道面并随自转相位漂移（12 h 内 45°–180°），行星环平面随之翻转。同时 `uSunDirection` 与星空方向却已旋入场景帧，使光照方向与几何相差 2.2°–88.1°。两处均已在 `docs/e2e-verification-report.md` 的 P0-2/P0-3 中修复。
+
+局部（母天体相对）轨道折线的顶点在黄道帧给出，`OrbitRenderer.setLocalPath()` 施加同一矩阵后再按标量缩放，因此卫星轨迹与其卫星位置严格重合。
 
 ### 2.5 其它工具
 

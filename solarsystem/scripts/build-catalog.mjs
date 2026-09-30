@@ -6,13 +6,19 @@
  * data/sources/ that the update-* scripts produced.
  *
  * Outputs
- *   public/data/catalog/catalog.json          Sun, planets, dwarf planets, satellites, starfield manifest
+ *   public/data/catalog/catalog-<version>.json  Sun, planets, dwarf planets, satellites, starfield manifest
  *   public/data/catalog/minor-bodies.json     search/filter index for ~11k minor bodies
  *   public/data/catalog/minor-bodies.bin      Float32 orbital-element buffer for GPU/worker propagation
- *   public/data/catalog/manifest.json         version, file list, counts and validation report
+ *   public/data/catalog/manifest.json         version, `catalogFile`, `sourceUpdatedAt`, file list and validation report
+ *
+ * The catalog is written under its version stamp (`catalog-vYYYYMMDD.json`) and the
+ * manifest names it with `catalogFile`, so a data refresh ships a new immutable
+ * artefact instead of overwriting a file a visitor's browser may still have cached
+ * (specification §6/§48). A legacy `catalog.json` is deliberately NOT emitted.
  *
  * Usage:  node scripts/build-catalog.mjs
  */
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import {
   PUBLIC_DATA_DIR,
@@ -418,7 +424,22 @@ async function main() {
   for (const body of dwarfPlanets) lookup.set(body.id, body)
   const satellitesBodies = buildSatellites(satellites, lookup, bodyNames)
 
-  const bodies = [...planetBodies, ...dwarfPlanets, ...satellitesBodies]
+  /**
+   * Provenance stamp for the whole catalog: the most recent upstream retrieval
+   * among the source datasets that feed it (`retrievedAt` is the field the
+   * update-* scripts write when they download a dataset). Every body carries it so
+   * the information panel can state how old its numbers are (specification §6).
+   */
+  const sourceUpdatedAt =
+    [physical.retrievedAt, satellites.retrievedAt, minorBodiesSource.retrievedAt]
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null
+
+  const bodies = [...planetBodies, ...dwarfPlanets, ...satellitesBodies].map((body) => ({
+    ...body,
+    sourceUpdatedAt,
+  }))
 
   const index = []
   const { data, hyperbolic, stride } = buildMinorBodyBuffer(minorBodiesSource, index)
@@ -500,6 +521,7 @@ async function main() {
       'Normalized solar-system catalog. Counts are computed from the imported datasets at build time; no object totals are hard-coded in the application.',
     version,
     generatedAt: new Date().toISOString(),
+    sourceUpdatedAt,
     conventions: {
       distanceUnit: 'km (internal), au for heliocentric osculating elements',
       timeUnit: 'second (internal), Julian Date / MJD for epochs',
@@ -514,6 +536,10 @@ async function main() {
       'https://ssd-api.jpl.nasa.gov/sbdb_query.api',
       'https://ssd.jpl.nasa.gov/sats/elem/',
       'https://nssdc.gsfc.nasa.gov/planetary/factsheet/',
+      // The Minor Planet Center is the IAU authority for small-body designations
+      // and NEO confirmation. Its comet/asteroid designation products are covered
+      // conceptually by the JPL SBDB payload ingested here; see docs/data-sources.md.
+      'https://www.minorplanetcenter.net/',
       starManifest.source,
     ],
     statistics: {
@@ -542,7 +568,11 @@ async function main() {
     validation,
   }
 
-  await writeJson(path.join(catalogDir, 'catalog.json'), catalog, { pretty: false })
+  const catalogFileName = `catalog-${version}.json`
+  await writeJson(path.join(catalogDir, catalogFileName), catalog, { pretty: false })
+  // The catalog is now published under its version stamp only. Remove any legacy
+  // unversioned copy so the directory always matches what the manifest declares.
+  await rm(path.join(catalogDir, 'catalog.json'), { force: true })
   // The JPL/Standish planet elements are shipped so the application can evaluate
   // the Mode B Keplerian planet path next to the Mode A ephemeris.
   await writeJson(
@@ -575,8 +605,12 @@ async function main() {
   const manifest = {
     version,
     generatedAt: catalog.generatedAt,
+    sourceUpdatedAt,
+    // Names the versioned catalogue artefact inside this directory. The loader
+    // follows this field, so a refresh never has to invalidate a cached file name.
+    catalogFile: catalogFileName,
     files: [
-      { path: 'catalog/catalog.json', role: 'Sun, planets, dwarf planets, satellites, starfield manifest' },
+      { path: `catalog/${catalogFileName}`, role: 'Sun, planets, dwarf planets, satellites, starfield manifest' },
       { path: 'catalog/planet-elements.json', role: 'JPL/Standish Keplerian elements for the Mode B planet path' },
       { path: 'catalog/minor-bodies.json', role: 'minor-body search/filter index' },
       { path: 'catalog/minor-bodies.bin', role: `Float32 orbital elements, ${stride} values per object` },

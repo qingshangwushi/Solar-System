@@ -108,8 +108,8 @@ npm run preview        # vite preview --host 0.0.0.0 --port 4173
 
 - [ ] 目标机器/浏览器支持 **WebGL 2**（Chrome/Edge/Firefox 现代版本；Safari 需较新版本与硬件加速）。可在浏览器控制台确认 `detectGraphicsCapability().backend === 'webgl2'`，或观察是否出现降级提示。
 - [ ] 展厅机器**启用硬件加速**；若为无 GPU 的虚拟机，会出现“未能创建 WebGL 上下文”的提示。
-- [ ] `npm run build` 无 TypeScript 错误（`tsc -b` 通过）；`npm test` 全绿（当前 4 文件 / 60 用例）。
-- [ ] `dist/` 中包含完整数据：`data/catalog/{catalog.json,planet-elements.json,minor-bodies.json,minor-bodies.bin,manifest.json}`、`data/stars/*`、`data/textures/*`、`exhibition.config.json`。
+- [ ] `npm run build` 无 TypeScript 错误（`tsc -b` 通过）；`npm test` 全绿（当前 9 文件 / 115 用例）。
+- [ ] `dist/` 中包含完整数据：`data/catalog/{catalog-vYYYYMMDD.json,planet-elements.json,minor-bodies.json,minor-bodies.bin,manifest.json}`（`manifest.json` 的 `catalogFile` 指向版本化目录）、`data/stars/*`、`data/textures/*`、`exhibition.config.json`。
 - [ ] 拔网线/离线启动，确认无外部请求（贴图、目录均本地）。
 - [ ] 按展陈需要编辑 `exhibition.config.json`：语言、默认尺度/画质、`autoDemoDelaySeconds`、`uiScale`、`reducedMotion`、标题副标题。
 - [ ] 触摸屏：确认 48 px 触控目标、单指旋转/双指缩放/轻点选中/双击飞抵均正常。

@@ -3,12 +3,20 @@
  *
  * The client owns the request/response bookkeeping and the fallback path: when
  * workers are unavailable (or a transfer fails), propagation falls back to the main
- * thread through the shared astronomy modules, so the exhibition never shows an
- * empty asteroid belt because of a browser quirk.
+ * thread through the same shared astronomy module the worker uses, so the exhibition
+ * never shows an empty asteroid belt because of a browser quirk.
+ *
+ * The fallback is chunked and yields to the event loop between chunks. A single
+ * blocking loop over ~11 000 Kepler solves would stall a frame — which is exactly
+ * what the specification forbids ("no main-thread full propagation") — while
+ * returning partial results would make bodies jump to the origin, so the work is
+ * spread across a few frames and the complete, exact array is returned.
  */
-import { propagateRelativeKm } from '../astronomy/OrbitPropagator'
-import { AU_KM } from '../astronomy/Units'
-import { J2000_JD } from '../astronomy/Constants'
+import { propagateMinorBodyKm, sampleMinorBodyOrbitKm } from '../astronomy/MinorBodyPropagator'
+import { GM_SUN_KM3_S2 } from '../astronomy/Constants'
+
+/** Objects propagated per event-loop turn on the fallback path. */
+const FALLBACK_CHUNK = 1200
 
 export interface OrbitPositionsResult {
   positions: Float64Array
@@ -23,10 +31,12 @@ export class OrbitWorkerClient {
   private readonly pending = new Map<number, (value: OrbitPositionsResult) => void>()
   private elements: Float32Array | null = null
   private subset: Int32Array = new Int32Array(0)
-  private gmKm3S2 = 1.32712440018e11
+  private gmKm3S2 = GM_SUN_KM3_S2
   private fallbackOnly = false
   private disposed = false
   private lastComputeMs = 0
+  /** True while a chunked fallback pass is in flight, so frames cannot pile up. */
+  private fallbackBusy = false
 
   /** True when propagation runs on the main thread. */
   get isFallback(): boolean {
@@ -130,29 +140,30 @@ export class OrbitWorkerClient {
     return this.buildPathOnMainThread(index, samples)
   }
 
-  private propagateOnMainThread(julianDate: number): OrbitPositionsResult {
+  private async propagateOnMainThread(julianDate: number): Promise<OrbitPositionsResult> {
     const started = performance.now()
     const elements = this.elements
     if (!elements) return { positions: new Float64Array(0), count: 0, computeMs: 0, usedWorker: false }
     const count = this.subset.length
     const output = new Float64Array(count * 3)
-    for (let slot = 0; slot < count; slot++) {
-      const offset = this.subset[slot] * 8
-      const qAu = elements[offset]
-      const eccentricity = elements[offset + 1]
-      const semiMajorAxisKm = (qAu * AU_KM) / (1 - eccentricity)
-      const definition = {
-        semiMajorAxisKm,
-        eccentricity,
-        inclinationDeg: (elements[offset + 2] * 180) / Math.PI,
-        longitudeAscendingNodeDeg: (elements[offset + 3] * 180) / Math.PI,
-        argumentOfPeriapsisDeg: (elements[offset + 4] * 180) / Math.PI,
-        perihelionJD: elements[offset + 5] + 2400000.5,
+    this.fallbackBusy = true
+    try {
+      for (let slot = 0; slot < count; slot++) {
+        const position = propagateMinorBodyKm(elements, this.subset[slot], julianDate, this.gmKm3S2)
+        if (position) {
+          output[slot * 3] = position.x
+          output[slot * 3 + 1] = position.y
+          output[slot * 3 + 2] = position.z
+        }
+        if (slot > 0 && slot % FALLBACK_CHUNK === 0) {
+          // Hand the frame back to the browser between chunks; the simulation and the
+          // camera keep running while the cloud catches up.
+          await new Promise<void>((resolve) => setTimeout(resolve, 0))
+          if (this.disposed) break
+        }
       }
-      const position = propagateRelativeKm(definition, { gmKm3S2: this.gmKm3S2 }, julianDate)
-      output[slot * 3] = position.x
-      output[slot * 3 + 1] = position.y
-      output[slot * 3 + 2] = position.z
+    } finally {
+      this.fallbackBusy = false
     }
     this.lastComputeMs = performance.now() - started
     return { positions: output, count, computeMs: this.lastComputeMs, usedWorker: false }
@@ -161,33 +172,14 @@ export class OrbitWorkerClient {
   private buildPathOnMainThread(index: number, samples: number): Float64Array | null {
     const elements = this.elements
     if (!elements) return null
-    const offset = index * 8
-    const qAu = elements[offset]
-    const eccentricity = elements[offset + 1]
-    const semiMajorAxisKm = (qAu * AU_KM) / (1 - eccentricity)
-    const meanMotionRadPerDay = Math.sqrt(this.gmKm3S2 / Math.abs(semiMajorAxisKm) ** 3) * 86400
-    const points = new Float64Array(samples * 3)
-    for (let sample = 0; sample < samples; sample++) {
-      const meanAnomalyDeg = (sample / samples) * 360
-      const definition = {
-        semiMajorAxisKm,
-        eccentricity,
-        inclinationDeg: (elements[offset + 2] * 180) / Math.PI,
-        longitudeAscendingNodeDeg: (elements[offset + 3] * 180) / Math.PI,
-        argumentOfPeriapsisDeg: (elements[offset + 4] * 180) / Math.PI,
-        meanAnomalyDeg,
-        epochJD: J2000_JD,
-      }
-      const position = propagateRelativeKm(
-        definition,
-        { gmKm3S2: this.gmKm3S2, meanMotionRadPerDayOverride: meanMotionRadPerDay },
-        J2000_JD,
-      )
-      points[sample * 3] = position.x
-      points[sample * 3 + 1] = position.y
-      points[sample * 3 + 2] = position.z
-    }
-    return points
+    // Same sampler the worker uses, so a fallback trajectory is identical to the
+    // worker's rather than a second implementation that can drift apart.
+    return sampleMinorBodyOrbitKm(elements, index, samples)
+  }
+
+  /** True while a chunked fallback pass is in flight. */
+  get isFallbackBusy(): boolean {
+    return this.fallbackBusy
   }
 
   dispose(): void {

@@ -120,12 +120,18 @@ export interface CelestialBody {
   discovery?: DiscoveryRecord | null
   documentedSatelliteCount?: number
   source: string
+  /** When the values above were retrieved from the cited source. */
+  sourceUpdatedAt?: string
 }
 
 export interface MinorBodyRecord {
   id: string
   name: string
   fullName: string
+  /** Chinese designation, when one exists (dwarf planets and notable comets). */
+  nameZh?: string | null
+  /** Catalogue number, when the object has one (e.g. 136199 for Eris). */
+  number?: string | null
   bucket: MinorBodyBucket
   classCode: string | null
   classLabel: string
@@ -223,6 +229,10 @@ export interface StarManifest {
 export interface CatalogManifest {
   version: string
   generatedAt: string
+  /** When the upstream datasets were retrieved, so the data age is auditable. */
+  sourceUpdatedAt?: string
+  /** File name (inside `data/catalog/`) of the versioned catalog artefact. */
+  catalogFile?: string
   files: Array<{ path: string; role: string }>
   statistics: CatalogStatistics
   validation: { passed: boolean; checks: Array<{ name: string; passed: boolean }> }

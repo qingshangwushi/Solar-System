@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SearchHit } from '../data/SearchIndex'
 import type { Translate } from '../i18n'
 import { bucketKey, typeKey } from './formatters'
+import { useFocusTrap } from './useFocusTrap'
 
 export interface SearchPanelProps {
   t: Translate
@@ -24,7 +25,10 @@ export interface SearchPanelProps {
 export function SearchPanel(props: SearchPanelProps) {
   const { t } = props
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const panelRef = useRef<HTMLElement | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+
+  useFocusTrap(panelRef, true)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -37,7 +41,7 @@ export function SearchPanel(props: SearchPanelProps) {
   const suggestions = useMemo(() => props.hits.slice(0, 20), [props.hits])
 
   return (
-    <aside className="flyout" aria-label={t('search')}>
+    <aside className="flyout" aria-label={t('search')} role="dialog" aria-modal="true" ref={panelRef}>
       <div className="sidebar__head" style={{ padding: '0 0 0.5rem' }}>
         <h2>{t('search')}</h2>
         <button type="button" className="inspector__close" aria-label={t('close')} onClick={() => props.onClose()}>
@@ -83,7 +87,18 @@ export function SearchPanel(props: SearchPanelProps) {
               <span>{hit.kind === 'body' && props.language === 'zh-CN' && hit.nameZh ? `${hit.nameZh} · ${hit.name}` : hit.name}</span>
               <span className="kind">
                 {hit.kind === 'minorBody' ? t(bucketKey(hit.typeLabel)) : t(typeKey(hit.typeLabel))}
-                {hit.designation ? ` · ${hit.designation.split(' ')[0]}` : ''}
+                {/*
+                  §24 requires the owning system in the result row: bodies show their
+                  parent system, small bodies show their catalogue number. The field
+                  was already indexed but never rendered (P2-4).
+                */}
+                {hit.kind === 'body'
+                  ? hit.parentLabel
+                    ? ` · ${props.language === 'zh-CN' && hit.parentNameZh ? hit.parentNameZh : hit.parentLabel}`
+                    : ''
+                  : hit.number
+                    ? ` · ${hit.number}`
+                    : ''}
               </span>
             </button>
           </li>

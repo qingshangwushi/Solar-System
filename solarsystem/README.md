@@ -35,7 +35,7 @@ flowchart TB
   BUILD["scripts/build-catalog.mjs<br/>归一化 + 校验"]
 
   subgraph Catalog["public/data/catalog/"]
-    CAT["catalog.json"]
+    CAT["catalog-v<version>.json"]
     PE["planet-elements.json"]
     MB["minor-bodies.bin / .json"]
     MAN["manifest.json"]
@@ -139,13 +139,23 @@ npm run smoke-test
 | 行星自转极轴 | IAU WGCCRE / NAIF 行星常数 | IAU/NAIF（公有领域常数） | J2000 极轴 R.A./Dec.、自转相位来源标记 | 无（人工策展表 `data/sources/planet-orientation.json`） |
 | 命名与发现记录 | IAU / NASA-JPL | 公有领域 | 中英文名、官方名称、别名、发现时间与发现者 | 无（人工策展表 `data/sources/body-names.json`） |
 
-生成目录（`public/data/catalog/`，版本 `v20260929`，生成时间 `2026-09-29T09:57:32.423Z`）包含：`catalog.json`、`planet-elements.json`、`minor-bodies.json`、`minor-bodies.bin`、`manifest.json`；恒星与贴图为 `public/data/stars/*` 与 `public/data/textures/*`。
+生成目录（`public/data/catalog/`，版本 `v20260929`）包含**版本化目录** `catalog-v20260929.json`、`planet-elements.json`、`minor-bodies.json`、`minor-bodies.bin` 与 `manifest.json`。`manifest.json` 通过顶层字符串字段 `catalogFile`（`"catalog-v20260929.json"`）指向当前目录文件，运行时 `src/data/CatalogLoader.ts` 读取该字段，因此一次数据刷新会写入新的不可变文件，而不会覆盖浏览器可能仍在缓存的旧文件。`manifest.json` 与目录内每个天体都带有 `sourceUpdatedAt`（上游数据集中最新的 `retrievedAt`，当前 `2026-09-29T09:57:32.128Z`），用于标明数据年龄。构建**不再**写出非版本化的 `catalog.json`。恒星与贴图为 `public/data/stars/*` 与 `public/data/textures/*`。
 
 ---
 
 ## 4. 更新天文数据
 
-管线分为两层：`data/*.mjs` 联网抓取权威数据 → `data/sources/*.json`；`scripts/build-catalog.mjs` **不联网**，只合并与校验，输出运行时目录。
+管线分为两层：联网抓取权威数据 → `data/sources/*.json`；`scripts/build-catalog.mjs` **不联网**，只合并与校验，输出运行时目录。
+
+| npm 脚本 | 作用 | 是否联网 |
+| --- | --- | --- |
+| `npm run data:minor-bodies` | JPL SBDB 查询 API → `data/sources/minor-bodies.json`（唯一下载小天体的步骤） | 需要网络 |
+| `npm run data:asteroids` | 从上述文件离线切分出小行星族 → `data/sources/asteroids.json`（mainBelt / nearEarth / trojan / centaur / tno） | 离线 |
+| `npm run data:comets` | 从上述文件离线切分出彗星桶 → `data/sources/comets.json` | 离线 |
+| `npm run data:planets` / `data:satellites` / `data:stars` / `data:textures` | NASA/NSSDC fact sheet、JPL 卫星平均要素、HYG 星表、Solar System Scope 贴图 | 需要网络 |
+| `npm run data:build` | 合并与校验 → `public/data/catalog/catalog-<版本>.json` + `manifest.json`（含 `catalogFile`、`sourceUpdatedAt`） | 离线 |
+| `npm run generate:ephemeris` | 下载 JPL Horizons 外部基准矢量 → `data/sources/horizons-golden.json` | 需要网络 |
+| `npm run data:all` | 依次执行上述抓取、切分与构建 | 混合 |
 
 ```bash
 # 抓取（需要网络；Node 全局 fetch 可通过 NODE_USE_ENV_PROXY=1 走代理）
@@ -155,11 +165,18 @@ NODE_USE_ENV_PROXY=1 node scripts/update-satellites.mjs
 NODE_USE_ENV_PROXY=1 node scripts/update-stars.mjs
 NODE_USE_ENV_PROXY=1 node scripts/update-textures.mjs
 
+# 离线切分（读取上一步的 minor-bodies.json，不联网；各自打印真实数量）
+node scripts/update-asteroids.mjs
+node scripts/update-comets.mjs
+
 # 归一化 + 校验（离线运行，打印校验结果）
 node scripts/build-catalog.mjs
+
+# 外部科学基准（需要网络；离线机器会写出 status="unavailable" 的占位文件而非编造数据）
+node scripts/generate-ephemeris.mjs
 ```
 
-`scripts/lib/io.mjs` 提供带重试的 `httpText`（4 次重试、60 s 超时、`user-agent`）与最小 HTML 表格解析器；`update-*` 脚本分别从 NASA/NSSDC fact sheet、JPL SBDB API、HYG CSV 解析出结构化 JSON。
+`scripts/lib/io.mjs` 提供带重试的 `httpText`（4 次重试、60 s 超时、`user-agent`）与最小 HTML 表格解析器；`update-*` 脚本分别从 NASA/NSSDC fact sheet、JPL SBDB API、HYG CSV 解析出结构化 JSON。`scripts/generate-ephemeris.mjs` 另带 `--self-test`，可在无网络时校验 Horizons `$$SOE/$$EOE` 文本表的解析器（合成格式样本，不写入任何数据）。
 
 ---
 
@@ -170,7 +187,14 @@ node scripts/build-catalog.mjs
 - Solar System Scope 行星表面图（`2k_*.jpg`、`2k_saturn_ring_alpha.png`、`2k_stars_milky_way.jpg`）：**CC BY 4.0**，派生自 NASA/USGS 影像，允许离线随展项分发。
 - 地球法线图与镜面图（`earth_normal_2048.jpg`、`earth_specular_2048.jpg`）：取自 three.js 官方示例，**MIT**。
 
-运行时行为（`src/data/TextureProvider.ts`）：不在启动时下载任何贴图，天体首次进入贴图 LOD 时才请求其贴图；`ultra` 档会优先请求可选 4k 资源（`4k-<file>` / `4k_<file>`）并回退到 2k；没有公开全球影像的天体（如 Eris、Titan）使用**确定性程序化贴图**，并在信息面板标注“表面贴图为程序化生成”。贴图缓存上限 48 项并显式 `dispose()`，避免长时间无人值守运行时 GPU 内存增长。
+运行时行为（`src/data/TextureProvider.ts`）：
+
+- **随包离线分发的地图**：Solar System Scope 的 2k 行星/卫星表面图（`public/data/textures/*.jpg`）与土星环 alpha 图；其中地球另有 three.js 官方示例的法线图与镜面图。也就是说，展项在断网时使用的地图全部来自上述两个来源，没有"下载自任意网络图片"的情况。
+- **惰性请求**：启动阶段不请求任何贴图；某个天体首次进入**贴图 LOD**（投影半径 ≥ 5 px，见 `docs/performance.md`）时才发起该天体的贴图请求，并在缓存中复用。
+- **画质档位决定分辨率层级**：离线包为 2048 px（2k）资源，`ultra` 与 `high` 档按原生 2048 px 使用，`medium` 档在加载时降采样到 1024 px，`performance` 档降采样到 512 px（`TEXTURE_MAX_WIDTH`）。分辨率层级是加载期一次性处理，不会在运行时反复切换。
+- **缺失或加载失败 → 确定性程序化贴图**：某天体声明的地图文件不存在、或请求/解码失败时，使用由天体 id 哈希生成的确定性程序化地图，并在信息面板明确标注“程序化贴图”，绝不冒充实拍影像。
+
+贴图缓存上限 48 项并显式 `dispose()`，避免长时间无人值守运行时 GPU 内存增长。
 
 ---
 
@@ -241,7 +265,7 @@ JPL 公布的元素精度（1800–2050，日心黄经/黄纬/距离）：水星
 - 在 `scientific` 模式下，**天体半径也真实**（同样的 1000 km/单位）。
 - 自转**速率**与**极轴指向**：来自 NASA/NSSDC 恒星自转周期与 IAU/NAIF 极轴，是真实数据。
 - 行星环的内外边界：按公开的“行星赤道半径倍数”给出（如土星环 1.11–2.27 R），是几何而非美术。
-- 天体表面贴图：真实公开影像（或明确标注的程序化贴图），绝不冒充实拍。
+- 天体表面贴图：随包离线分发的 Solar System Scope 地图（CC BY 4.0，派生自 NASA/USGS 影像）与 three.js 示例法线/镜面图（MIT）；贴图在进入贴图 LOD 时按需请求，画质档位决定 2048/1024/512 px 分辨率层级；声明的地图缺失或加载失败时回退为**确定性程序化贴图**，信息面板显示“程序化贴图”。绝不把程序化贴图冒充实拍影像。
 - 小天体点云：每个点是一个真实编目天体的位置；颜色编码动力学族群，尺寸仅由绝对星等/直径编码（显示约定，已在图例说明）。
 
 **被视觉增强或改变、并在 UI 中披露的部分：**
@@ -290,7 +314,7 @@ JPL 公布的元素精度（1800–2050，日心黄经/黄纬/距离）：水星
 
 ## 12. 数据校验结果（真实输出）
 
-`scripts/build-catalog.mjs` 在构建时执行三项校验并写入 `public/data/catalog/manifest.json` 与 `catalog.json`。当前（`v20260929`）`manifest.validation.passed = true`，三项全部通过：
+`scripts/build-catalog.mjs` 在构建时执行三项校验并写入 `public/data/catalog/manifest.json` 与版本化目录 `catalog-v20260929.json`（`manifest.catalogFile` 指向后者）。当前（`v20260929`）`manifest.validation.passed = true`，三项全部通过：
 
 | 校验 | 说明 | 结果 |
 | --- | --- | --- |
@@ -300,7 +324,7 @@ JPL 公布的元素精度（1800–2050，日心黄经/黄纬/距离）：水星
 
 构建还会输出一条告警：Eris、Haumea、Makemake 无公开直径，渲染时按绝对星等估算大小，UI 显示 `暂无可靠数据`。
 
-目录统计（`manifest.json` / `catalog.json`）：总天体 11 162 = 渲染天体 178 + 小天体 10 984；按类型：恒星 1、行星 8、矮行星 5、卫星 164；小天体按族：主带 4 495、近地 1 676、特洛伊 1 558、TNO 1 600、半人马 500、彗星 1 155，其中双曲轨道 200；恒星 15 598（命名 366）；有公开相位的卫星 12。
+目录统计（`manifest.json` / `catalog-v20260929.json`）：总天体 11 162 = 渲染天体 178 + 小天体 10 984；按类型：恒星 1、行星 8、矮行星 5、卫星 164；小天体按族：主带 4 495、近地 1 676、特洛伊 1 558、TNO 1 600、半人马 500、彗星 1 155，其中双曲轨道 200；恒星 15 598（命名 366）；有公开相位的卫星 12。
 
 ### Mode B 行星 vs Mode A 历表实测误差
 
@@ -310,14 +334,22 @@ JPL 公布的元素精度（1800–2050，日心黄经/黄纬/距离）：水星
 | --- | --- | --- |
 | 水星 Mercury | 0.0079° | 0.0024 % |
 | 金星 Venus | 0.0035° | 0.0032 % |
-| 地球 Earth | 0.1470° | 0.2688 % |
+| 地球 Earth | 0.0037° | 0.0014 % |
 | 火星 Mars | 0.0158° | 0.0089 % |
 | 木星 Jupiter | 0.0851° | 0.0685 % |
 | 土星 Saturn | 0.1534° | 0.1253 % |
 | 天王星 Uranus | 0.0229° | 0.0403 % |
 | 海王星 Neptune | 0.0152° | 0.0187 % |
 
-地球残差较大（≤ 0.147°）是预期的：JPL 表中地球条目是**地月质心**，Mode B 用月球平均要素做质心分裂，该相位仅有数度精度 —— 这也正是应用中地球走 Mode A 的原因。月球平均要素对历表的最差方向误差为 **14.19°**（5 年 240 采样），印证“卫星平均要素不用于历表计算”，故月球同样走 Mode A。
+JPL 表中地球条目是**地月质心**，Mode B 需用月球平均要素做质心分裂：`地球 = 质心 − μ/(1+μ)·r_月球`（μ = 月球/地球质量比 0.0123000371）。早前实现误用月球的系数 `1/(1+μ)`，把地球错位近一个地月距离（方向残差 0.1470°、径向 0.2688 %）；修正为 `μ/(1+μ)` 后残差降至 **0.0037° / 0.0014 %**，该系数由 `EphemerisValidation.test.ts` 的方向阈值 0.02° 锁定。月球平均要素对历表的最差方向误差为 **14.19°**（5 年 240 采样），印证“卫星平均要素不用于历表计算”，故月球走 Mode A。
+
+### 自动化测试与外部科学基准
+
+- **UI / 状态单测**（`src/ui/__tests__/`、`src/state/__tests__/`）：搜索（中文名 / 官方名 / 编号 / 别名）、选择与清除选择、时间倍率预设与暂停 / 反向 / 日期跳转（`SimulationClock`）、层筛选集合、`exhibition.config.json` 缺失或损坏时的合并回退、三种尺度模式与导览数据完整性。这些用例只覆盖纯逻辑层，`vitest.config.ts` 保持 `environment: 'node'`，不需要 GPU 或 DOM。
+- **性能单测**（`src/astronomy/__tests__/Performance.test.ts`）：在**合成**元素数组（真实 stride-8 布局与物理合法根数，只有种群是合成的）上，对 1 000 / 10 000 / 100 000 / 500 000 个天体各跑一遍完整开普勒传播，分别计时 `MinorBodyPropagator.propagateMinorBodyKm` 与 `KeplerSolver.perifocalPositionFromMeanAnomaly + perifocalToReferenceFrame`，断言每对象耗时与总时长上限并打印吞吐。本机实测 500 000 个天体约 105–115 ms（约 210–230 ns/对象，≈4.4×10⁶ 对象/秒）。
+- **外部科学基准**：`scripts/generate-ephemeris.mjs` 从 NASA/JPL Horizons 下载太阳为中心（`500@10`）、黄道 J2000 参考系下的位置（km）与速度（km/s），覆盖水星、地球、火星、木星、土星与**月球**，并记录完整请求 URL、检索日期与中心体；每一行在写入前都用该天体的公开近日/远日距离与轨道速度做自洽性检查，不合格的行被丢弃并记录。`scripts/verify-ephemeris.mjs` 把外部基准与 Mode A、Mode B **同时**比较，打印径向 / 角度 / 总位置 / 速度误差，超过文档阈值即非零退出。若构建机无网络，生成脚本写出 `status:"unavailable"` 且 `records: []` 的占位文件（绝不编造数值），验证脚本对该部分打印 `SKIPPED (no external reference)` 并保持该部分通过。
+- **浏览器冒烟测试**（`scripts/smoke-test.mjs`，`npm run test:smoke`）：自动发现缓存的 Chromium（可用 `SMOKE_CHROMIUM` 覆盖），必要时自行启动 Vite 开发服务器（引擎调试句柄只在 DEV 构建中存在），然后驱动十个验收场景；找不到浏览器时打印 `SKIPPED: no Chromium executable found` 并退出 0。
+- **门禁**：`npm run verify:all` = `typecheck → test → verify:ephemeris → build → test:smoke`。
 
 ---
 

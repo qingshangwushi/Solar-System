@@ -6,10 +6,12 @@
  * Default values come from exhibition.config.json, so an installation can ship with
  * the right behaviour without anyone touching this panel.
  */
+import { useRef } from 'react'
 import type { Translate } from '../i18n'
 import type { QualityLevel } from '../engine/QualityController'
 import type { ScaleMode } from '../data/ScaleModel'
 import type { Language } from '../i18n'
+import { useFocusTrap } from './useFocusTrap'
 
 export interface SettingsPanelProps {
   t: Translate
@@ -41,8 +43,10 @@ export interface SettingsPanelProps {
 
 export function SettingsPanel(props: SettingsPanelProps) {
   const { t } = props
+  const panelRef = useRef<HTMLElement | null>(null)
+  useFocusTrap(panelRef, true)
   return (
-    <aside className="flyout" aria-label={t('settings')}>
+    <aside className="flyout" aria-label={t('settings')} role="dialog" aria-modal="true" ref={panelRef}>
       <div className="sidebar__head" style={{ padding: '0 0 0.5rem' }}>
         <h2>{t('settings')}</h2>
         <button type="button" className="inspector__close" aria-label={t('close')} onClick={() => props.onClose()}>

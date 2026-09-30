@@ -218,6 +218,68 @@ void main() {
 `
 
 /**
+ * Cloud shell. Clouds are lit by the same solar direction term as the surface, so
+ * the cloud deck does not glow on the night side: an unlit cloud shell reads as a
+ * white ball covering the planet (P0-2/P0-1 of the verification report).
+ */
+export const CLOUD_FRAGMENT_SHADER = /* glsl */ `
+uniform sampler2D uMap;
+uniform vec3 uSunDirection;      // world space, from the body towards the Sun
+uniform float uOpacity;
+varying vec2 vUv;
+varying vec3 vWorldNormal;
+
+void main() {
+  vec3 normal = normalize(vWorldNormal);
+  float lambert = dot(normal, normalize(uSunDirection));
+  float day = smoothstep(-0.10, 0.22, lambert);
+  vec4 texel = texture2D(uMap, vUv);
+  // Cloud maps are stored as white cloud on black (sometimes with alpha); take
+  // whichever channel carries the mask.
+  float mask = max(texel.a, max(texel.r, max(texel.g, texel.b)));
+  vec3 colour = max(texel.rgb, vec3(0.62));
+  gl_FragColor = vec4(colour, mask * uOpacity * day);
+}
+`
+
+/**
+ * Comet coma: a soft, additive halo around the nucleus. `aSize` is the halo radius
+ * in render units and `uPixelScale` converts it to pixels for the current viewport,
+ * so the halo keeps a physical extent in every scale mode.
+ */
+export const COMA_VERTEX_SHADER = /* glsl */ `
+attribute float aSize;
+varying vec3 vColor;
+varying float vAlpha;
+uniform float uPixelScale;
+uniform float uOpacity;
+
+void main() {
+  vColor = color;
+  vAlpha = uOpacity;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  float distanceToCamera = max(1e-3, -mvPosition.z);
+  gl_PointSize = clamp(2.0 * aSize * uPixelScale / distanceToCamera, 2.0, 460.0);
+  gl_Position = projectionMatrix * mvPosition;
+}
+`
+
+export const COMA_FRAGMENT_SHADER = /* glsl */ `
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+  vec2 centered = gl_PointCoord - vec2(0.5);
+  float radius = length(centered);
+  if (radius > 0.5) discard;
+  // Broad, soft profile: bright core fading into the halo.
+  float halo = smoothstep(0.5, 0.0, radius);
+  float core = pow(halo, 3.0);
+  gl_FragColor = vec4(vColor * (halo * 0.55 + core), (halo * 0.5 + core * 0.5) * vAlpha);
+}
+`
+
+/**
  * Star field. Stars sit on a unit sphere around the camera so they never show
  * parallax; brightness follows the catalogue magnitude and the colour follows the
  * B-V index.

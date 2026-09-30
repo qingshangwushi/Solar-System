@@ -8,11 +8,12 @@
  * convention that was applied (scale magnification, orbit-phase convention,
  * procedural surface map).
  */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { BodyDescription, MinorBodyDescription } from '../engine/SolarSystemEngine'
 import type { Translate } from '../i18n'
+import { useFocusTrap } from './useFocusTrap'
 import { formatJulianDate } from '../astronomy/TimeSystem'
-import { formatDistance, formatScientific } from '../astronomy/Units'
+import { formatDistance, formatEarthRadii, formatScientific } from '../astronomy/Units'
 import { formatMagnification, SCALE_MODES, type ScaleMode } from '../data/ScaleModel'
 import {
   bucketKey,
@@ -37,6 +38,8 @@ export interface InspectorProps {
   scaleMode: ScaleMode
   radiusMagnification: number
   scientificMode: boolean
+  /** Localized display name of a catalogued body, used for the "system" field. */
+  resolveBodyName?: (id: string) => string | null
   onClose: () => void
   onFlyTo: () => void
 }
@@ -44,13 +47,21 @@ export interface InspectorProps {
 export function Inspector(props: InspectorProps) {
   const { t, language } = props
   const [tab, setTab] = useState<Tab>('basic')
+  const panelRef = useRef<HTMLElement | null>(null)
+  useFocusTrap(panelRef, Boolean(props.description || props.minorDescription))
 
   if (!props.description && !props.minorDescription) return null
 
   if (props.minorDescription) {
-    const { record, distanceFromSunKm, speedKmS, heliocentricKm } = props.minorDescription
+    const { record, distanceFromSunKm, speedKmS, heliocentricKm, julianDate, positionKnown } = props.minorDescription
     return (
-      <aside className="inspector" aria-label={record.name}>
+      <aside
+        className="inspector"
+        aria-label={record.name}
+        role="dialog"
+        aria-modal="false"
+        ref={panelRef}
+      >
         <div className="inspector__head">
           <h2>{record.name}</h2>
           <span>{record.id}</span>
@@ -90,11 +101,32 @@ export function Inspector(props: InspectorProps) {
           <dl className="kv">
             <Row field={distanceField(t('fieldDistanceFromSun'), distanceFromSunKm, language, t('valueUnknown'))} />
             <Row field={numberField(t('fieldVelocity'), speedKmS, 3, 'km/s', t('valueUnknown'))} />
-            <Row field={{ label: 'X', value: formatScientific(heliocentricKm.x, 4, 'km') }} />
-            <Row field={{ label: 'Y', value: formatScientific(heliocentricKm.y, 4, 'km') }} />
-            <Row field={{ label: 'Z', value: formatScientific(heliocentricKm.z, 4, 'km') }} />
-            <Row field={{ label: t('fieldJulianDate'), value: formatJulianDate(props.description?.julianDate ?? 0) }} />
+            <Row
+              field={
+                heliocentricKm
+                  ? { label: 'X', value: formatScientific(heliocentricKm.x, 4, 'km') }
+                  : { label: 'X', value: t('valueUnknown'), missing: true }
+              }
+            />
+            <Row
+              field={
+                heliocentricKm
+                  ? { label: 'Y', value: formatScientific(heliocentricKm.y, 4, 'km') }
+                  : { label: 'Y', value: t('valueUnknown'), missing: true }
+              }
+            />
+            <Row
+              field={
+                heliocentricKm
+                  ? { label: 'Z', value: formatScientific(heliocentricKm.z, 4, 'km') }
+                  : { label: 'Z', value: t('valueUnknown'), missing: true }
+              }
+            />
+            {/* The Julian Date of the displayed instant, never a value borrowed from
+                another object's description (P2-3). */}
+            <Row field={{ label: t('fieldJulianDate'), value: formatJulianDate(julianDate) }} />
           </dl>
+          {!positionKnown && <p className="note note--warn">{t('positionUnavailable')}</p>}
           <p className="note">
             {t('fieldDiameter')} / {t('fieldAlbedo')} · {t('valueUnknown')} = {t('valueUnknown')}
           </p>
@@ -110,7 +142,7 @@ export function Inspector(props: InspectorProps) {
   const physical = body.physical
 
   return (
-    <aside className="inspector" aria-label={body.name}>
+    <aside className="inspector" aria-label={body.name} role="dialog" aria-modal="false" ref={panelRef}>
       <div className="inspector__head">
         <h2 style={{ color: typeColour(body.type) }}>
           {language === 'zh-CN' && body.nameZh ? body.nameZh : body.name}
@@ -149,7 +181,7 @@ export function Inspector(props: InspectorProps) {
               <Row
                 field={text(
                   t('fieldParent'),
-                  body.parentId ? parentName(body.parentId, language) : null,
+                  body.parentId ? props.resolveBodyName?.(body.parentId) ?? body.parentId : null,
                   t('valueUnknown'),
                 )}
               />
@@ -166,7 +198,14 @@ export function Inspector(props: InspectorProps) {
             <dl className="kv">
               <Row field={distanceField(t('fieldDistanceFromSun'), description.distanceFromSunKm, language, t('valueUnknown'))} />
               {description.distanceFromParentKm !== null && (
-                <Row field={distanceField(t('fieldDistanceFromParent'), description.distanceFromParentKm, language, t('valueUnknown'))} />
+                <Row
+                  field={{
+                    // The unit system includes Earth radii; it is the readable scale
+                    // for a satellite system (the Moon is 60.3 R⊕ away).
+                    label: t('fieldDistanceFromParent'),
+                    value: `${formatDistance(description.distanceFromParentKm, language)} · ${formatEarthRadii(description.distanceFromParentKm, language)}`,
+                  }}
+                />
               )}
               <Row
                 field={
@@ -231,19 +270,31 @@ export function Inspector(props: InspectorProps) {
             </dl>
 
             <h3 className="section-title">{t('scientificMode')}</h3>
-            <dl className="kv">
-              <Row field={{ label: t('fieldDataMode'), value: positionModelLabel(body.positionModel, t) }} />
-              <Row
-                field={{
-                  label: 'scale',
-                  value: SCALE_MODES[props.scaleMode][language === 'zh-CN' ? 'labelZh' : 'labelEn'],
-                }}
-              />
-              <Row field={{ label: 'radius', value: formatMagnification(props.radiusMagnification, language) }} />
-              <Row field={{ label: 'LOD', value: description.lodTier }} />
-              <Row field={{ label: 'on-screen', value: `${description.projectedRadiusPixels.toFixed(1)} px` }} />
-              <Row field={text(t('fieldDataSource'), body.source, t('valueUnknown'))} />
-            </dl>
+            {/*
+              The toggle in the settings panel now has a visible consequence: the
+              extended read-outs (position model, scale magnification, LOD tier,
+              on-screen size and provenance) only appear in scientific mode (P2-5).
+            */}
+            {props.scientificMode ? (
+              <dl className="kv">
+                <Row field={{ label: t('fieldDataMode'), value: positionModelLabel(body.positionModel, t) }} />
+                <Row
+                  field={{
+                    label: 'scale',
+                    value: SCALE_MODES[props.scaleMode][language === 'zh-CN' ? 'labelZh' : 'labelEn'],
+                  }}
+                />
+                <Row field={{ label: 'radius', value: formatMagnification(props.radiusMagnification, language) }} />
+                <Row field={{ label: 'LOD', value: description.lodTier }} />
+                <Row field={{ label: 'on-screen', value: `${description.projectedRadiusPixels.toFixed(1)} px` }} />
+                <Row field={{ label: 'a (semi-major)', value: `${description.body.orbitSummary?.semiMajorAxisAu ?? '—'} AU` }} />
+                <Row field={{ label: 'e', value: `${description.body.orbitSummary?.eccentricity ?? '—'}` }} />
+                <Row field={{ label: 'camera', value: `${description.cameraDistanceUnits.toFixed(3)} render units` }} />
+                <Row field={text(t('fieldDataSource'), body.source, t('valueUnknown'))} />
+              </dl>
+            ) : (
+              <p className="note">{t('scientificModeOff')}</p>
+            )}
             {body.elements?.phaseSource === 'convention' && <p className="note note--warn">{t('phaseConvention')}</p>}
             {body.elements?.phaseSource === 'jpl-mean-elements' && <p className="note">{t('phasePublished')}</p>}
             {description.proceduralSurface && <p className="note note--warn">{t('proceduralSurface')}</p>}
@@ -259,7 +310,7 @@ export function Inspector(props: InspectorProps) {
 
         {tab === 'about' && (
           <div className="prose">
-            <p>{narration(body.id, language)}</p>
+            <p>{narration(body.id, t)}</p>
             {body.discovery && (
               <p>
                 {t('fieldDiscovered')}: {body.discovery.date ?? t('valueUnknown')} · {t('fieldDiscoverer')}:{' '}
@@ -306,60 +357,27 @@ function positionModelLabel(model: string, t: Translate): string {
   return t('positionModelOrigin')
 }
 
-function parentName(parentId: string, language: 'zh-CN' | 'en-US'): string {
-  const names: Record<string, { zh: string; en: string }> = {
-    sun: { zh: '太阳', en: 'Sun' },
-    earth: { zh: '地球', en: 'Earth' },
-    mars: { zh: '火星', en: 'Mars' },
-    jupiter: { zh: '木星', en: 'Jupiter' },
-    saturn: { zh: '土星', en: 'Saturn' },
-    uranus: { zh: '天王星', en: 'Uranus' },
-    neptune: { zh: '海王星', en: 'Neptune' },
-    pluto: { zh: '冥王星', en: 'Pluto' },
-  }
-  const entry = names[parentId]
-  if (!entry) return parentId
-  return language === 'zh-CN' ? entry.zh : entry.en
+/**
+ * Short, factual descriptions per body, resolved through the i18n layer so the
+ * component holds no user-visible prose of its own (§54).
+ */
+function narration(id: string, t: Translate): string {
+  const key = NARRATION_KEYS[id]
+  return key ? t(key) : t('narrationGeneric')
 }
 
-/**
- * Short, factual descriptions per body. Written from the published values rather
- * than from marketing copy, and kept inside the i18n layer's language switch.
- */
-function narration(id: string, language: 'zh-CN' | 'en-US'): string {
-  const zh: Record<string, string> = {
-    sun: '太阳是太阳系唯一的恒星，提供全部主要光照。其质量约占太阳系总质量的 99.86%，自转周期约 609 小时（赤道更快）。',
-    mercury: '水星是距太阳最近的行星，轨道离心率 0.206，表面几乎没有大气，昼夜温差极端。',
-    venus: '金星拥有浓密的二氧化碳大气与硫酸云层，逆向自转，是太阳系最热的行星表面。',
-    earth: '地球是目前已知唯一存在液态水海洋与生命的行星，自转轴倾角 23.44°，一颗天然卫星。',
-    mars: '火星表面覆盖氧化铁尘埃，拥有两颗小卫星与太阳系最高的火山。轨道离心率较大，季节变化显著。',
-    jupiter: '木星是太阳系质量最大的行星，自转最快，拥有四颗伽利略卫星与一个暗弱的环系。',
-    saturn: '土星以壮观的环系著称，环位于赤道面内；土卫六拥有浓密大气，土卫二存在冰下海洋的证据。',
-    uranus: '天王星自转轴几乎与轨道面平行，环与卫星系统随之近乎垂直运行。',
-    neptune: '海王星是距太阳最远的行星，风速可达超音速；海卫一为逆行轨道，可能为被俘获的柯伊伯带天体。',
-    pluto: '冥王星是柯伊伯带中最著名的矮行星，与冥卫一构成潮汐锁定的双天体系统。',
-    moon: '月球是地球唯一的天然卫星，轨道半长轴 384 400 km，潮汐锁定使其永远以同一面朝向地球。',
-  }
-  const en: Record<string, string> = {
-    sun: 'The Sun is the only star in the solar system and provides essentially all of its light. It holds about 99.86 % of the system mass and rotates in roughly 609 hours.',
-    mercury: 'Mercury is the innermost planet, with an eccentricity of 0.206 and almost no atmosphere, producing extreme day/night temperature contrasts.',
-    venus: 'Venus has a dense carbon-dioxide atmosphere and sulphuric-acid clouds, rotates retrograde, and has the hottest planetary surface in the system.',
-    earth: 'The Earth is the only place known to host liquid-water oceans and life. Its 23.44° axial tilt drives the seasons, and it has one natural satellite.',
-    mars: 'Mars is covered in iron-oxide dust, has two small moons and the tallest volcano in the solar system. Its noticeable eccentricity produces strong seasonal effects.',
-    jupiter: 'Jupiter is the most massive planet and rotates fastest, with four Galilean moons and a faint ring system.',
-    saturn: 'Saturn is famous for its rings, which lie in the planet equatorial plane. Titan has a dense atmosphere and Enceladus shows evidence of a subsurface ocean.',
-    uranus: 'Uranus rotates almost on its side, so its rings and moons orbit nearly perpendicular to the ecliptic.',
-    neptune: 'Neptune is the outermost planet, with supersonic winds. Triton orbits retrograde and is probably a captured Kuiper-belt object.',
-    pluto: 'Pluto is the best known dwarf planet of the Kuiper belt and forms a tidally locked pair with Charon.',
-    moon: 'The Moon is the Earth\'s only natural satellite. Its semi-major axis is 384 400 km and it is tidally locked, so the same face always points at the Earth.',
-  }
-  const table = language === 'zh-CN' ? zh : en
-  return (
-    table[id] ??
-    (language === 'zh-CN'
-      ? '该天体由公开轨道根数传播计算，详细参数见“轨道参数”与“物理特性”标签页。'
-      : 'This body is propagated from published orbital elements; see the Orbit and Physical tabs for its parameters.')
-  )
+const NARRATION_KEYS: Record<string, keyof import('../i18n').Dictionary> = {
+  sun: 'narrationSun',
+  mercury: 'narrationMercury',
+  venus: 'narrationVenus',
+  earth: 'narrationEarth',
+  mars: 'narrationMars',
+  jupiter: 'narrationJupiter',
+  saturn: 'narrationSaturn',
+  uranus: 'narrationUranus',
+  neptune: 'narrationNeptune',
+  pluto: 'narrationPluto',
+  moon: 'narrationMoon',
 }
 
 export { formatDistance }

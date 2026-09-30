@@ -44,6 +44,13 @@
   box-sizing: border-box;
 }
 
+html {
+  /* The interface-scale control drives the root font size, so every rem-based
+     dimension (chips, inputs, panels) scales together. Scaling only `body`
+     font-size left component sizes untouched (P2-5). */
+  font-size: calc(16px * var(--ui-scale));
+}
+
 html,
 body,
 #root {
@@ -57,7 +64,7 @@ body,
 }
 
 body {
-  font-size: calc(14px * var(--ui-scale));
+  font-size: 0.875rem;
 }
 
 button {
@@ -116,7 +123,6 @@ input:focus-visible,
   border-radius: 6px;
   background: rgba(4, 8, 16, 0.42);
   border: 1px solid rgba(127, 176, 255, 0.14);
-  backdrop-filter: blur(1px);
   white-space: nowrap;
   line-height: 1.15;
   transition: opacity 0.18s ease;
@@ -159,6 +165,17 @@ input:focus-visible,
     radial-gradient(circle at 88% 12%, rgba(58, 34, 12, 0.5) 0%, rgba(0, 0, 0, 0) 46%),
     #000;
   z-index: 40;
+}
+
+/*
+ * Once the renderer exists the splash no longer hides the scene: the panel fades to
+ * the right so the live solar-system view is visible behind the title (§30).
+ */
+.splash[data-live-background='true'] {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.74) 42%, rgba(0, 0, 0, 0.18) 100%),
+    radial-gradient(ellipse at 22% 58%, rgba(24, 44, 84, 0.4) 0%, rgba(0, 0, 0, 0) 60%);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
 }
 
 .splash__eyebrow {
@@ -311,6 +328,13 @@ input:focus-visible,
   flex-direction: column;
   justify-content: space-between;
   padding: clamp(0.7rem, 1.1vw, 1.35rem);
+  /*
+   * The HUD console sits above the side panels: the sidebars are anchored clear of
+   * the bottom control strip (see .sidebar / .inspector) and the transport buttons
+   * stay clickable even on a short viewport, where the panels used to intercept
+   * pointer events aimed at them (P1-1/P1-2).
+   */
+  z-index: 22;
 }
 
 .hud > * {
@@ -342,6 +366,8 @@ input:focus-visible,
   font-size: 0.82rem;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  /* A restrained translucency; the specification explicitly forbids heavy
+     glassmorphism, so the blur stays at the 6 px limit. */
   backdrop-filter: blur(6px);
 }
 
@@ -405,7 +431,8 @@ input:focus-visible,
   position: absolute;
   top: clamp(4.2rem, 6.4vh, 5.6rem);
   left: clamp(0.7rem, 1.1vw, 1.35rem);
-  bottom: clamp(6rem, 12vh, 8rem);
+  /* Stops clear of the transport console and the legend below the view. */
+  bottom: clamp(8.5rem, 17vh, 11rem);
   width: clamp(15rem, 17vw, 19rem);
   display: flex;
   flex-direction: column;
@@ -414,7 +441,7 @@ input:focus-visible,
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(6px);
   z-index: 12;
 }
 
@@ -517,14 +544,15 @@ input:focus-visible,
   top: clamp(4.2rem, 6.4vh, 5.6rem);
   right: clamp(0.7rem, 1.1vw, 1.35rem);
   width: clamp(17rem, 21vw, 24rem);
-  max-height: calc(100% - clamp(10rem, 20vh, 13rem));
+  /* Leaves room for the bottom console and its scaled-warning chip. */
+  max-height: calc(100% - clamp(13rem, 25vh, 16rem));
   display: flex;
   flex-direction: column;
   background: var(--panel-strong);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(6px);
   overflow: hidden;
   z-index: 12;
 }
@@ -636,7 +664,7 @@ input:focus-visible,
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(6px);
   box-shadow: var(--shadow);
 }
 
@@ -752,7 +780,7 @@ input:focus-visible,
 
 .flyout {
   position: absolute;
-  bottom: clamp(6.5rem, 13vh, 9rem);
+  bottom: clamp(8.5rem, 17vh, 11rem);
   right: clamp(0.7rem, 1.1vw, 1.35rem);
   width: clamp(17rem, 21vw, 23rem);
   max-height: 52%;
@@ -762,14 +790,15 @@ input:focus-visible,
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
-  z-index: 14;
+  backdrop-filter: blur(6px);
+  /* Above the HUD, so an open overlay is never partly covered by the console. */
+  z-index: 24;
 }
 
 .flyout--left {
   left: clamp(0.7rem, 1.1vw, 1.35rem);
   right: auto;
-  bottom: clamp(6.5rem, 13vh, 9rem);
+  bottom: clamp(8.5rem, 17vh, 11rem);
 }
 
 .search-input {
@@ -908,8 +937,8 @@ input:focus-visible,
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  z-index: 16;
-  backdrop-filter: blur(12px);
+  z-index: 26;
+  backdrop-filter: blur(6px);
 }
 
 .tour__step {
@@ -956,10 +985,13 @@ input:focus-visible,
 
 .auto-demo-badge {
   position: absolute;
-  top: clamp(4.4rem, 7vh, 6rem);
+  /* Sits just above the console, which keeps the top-right corner free for the
+     information panel and its close button. */
+  bottom: clamp(8.5rem, 17vh, 11rem);
   left: 50%;
   transform: translateX(-50%);
   z-index: 18;
+  pointer-events: none;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -972,14 +1004,23 @@ input:focus-visible,
   letter-spacing: 0.12em;
 }
 
+/*
+ * Toasts are informational: the stack never intercepts pointer events, so a notice
+ * can no longer sit on top of a control (the "quality adjusted" toast used to block
+ * the information panel's close button — P1-2). Individual toasts stay clickable so
+ * they can be dismissed.
+ */
 .toast-stack {
   position: absolute;
-  top: clamp(4.4rem, 7vh, 6rem);
-  right: clamp(0.7rem, 1.1vw, 1.35rem);
+  top: clamp(4.6rem, 7.4vh, 6.2rem);
+  left: 50%;
+  transform: translateX(-50%);
   display: grid;
   gap: 0.4rem;
+  justify-items: center;
   z-index: 30;
   max-width: 22rem;
+  pointer-events: none;
 }
 
 .toast {
@@ -989,6 +1030,17 @@ input:focus-visible,
   border: 1px solid var(--line);
   font-size: 0.78rem;
   color: var(--text-dim);
+  pointer-events: auto;
+}
+
+/* The date-jump warning: visible, click-through, and clear of every control. */
+.hud__notice {
+  position: absolute;
+  bottom: clamp(8.5rem, 17vh, 11rem);
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 19;
 }
 
 .toast[data-level='warn'] {
@@ -1001,7 +1053,7 @@ input:focus-visible,
 .perf {
   position: absolute;
   left: clamp(0.7rem, 1.1vw, 1.35rem);
-  bottom: clamp(6.5rem, 13vh, 9rem);
+  bottom: clamp(8.5rem, 17vh, 11rem);
   width: 15.5rem;
   padding: 0.7rem 0.8rem;
   border-radius: var(--radius);
@@ -1034,7 +1086,7 @@ input:focus-visible,
 
 /* ---------------------------------------------------------------- responsive */
 
-/* Touch / exhibition panels: every interactive element reaches 48 px. */
+/* Touch / exhibition panels: every interactive element reaches 48x48 px. */
 @media (pointer: coarse) {
   .chip,
   .chip--button,
@@ -1044,12 +1096,29 @@ input:focus-visible,
   .search-results button,
   .segmented button,
   .tab {
+    /* Height alone was not enough: four transport buttons and six rate presets
+       measured 40-42 px wide (P2-10). */
+    min-width: var(--touch-min);
     min-height: var(--touch-min);
   }
 
   .inspector__close {
     min-width: var(--touch-min);
     min-height: var(--touch-min);
+  }
+
+  .toggle {
+    width: 3.4rem;
+    height: 2rem;
+  }
+
+  .toggle::after {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .toggle[data-on='true']::after {
+    transform: translateX(1.4rem);
   }
 }
 

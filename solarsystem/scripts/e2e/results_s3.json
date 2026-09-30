@@ -1,0 +1,226 @@
+[
+  {
+    "id": "S3-01",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "全局搜索：热门天体均可命中（Earth/Mars/Europa/Titan/Pluto/Ceres/Halley/Apophis）",
+    "status": "PASS",
+    "detail": "{\"Earth\": [\"地球 · Earth | 行星 · Earth\"], \"Mars\": [\"火星 · Mars | 行星 · Mars\", \"Marson | 特洛伊群 · 39795\", \"Marsyas | 近地天体 · 343158\"], \"Europa\": [\"Europa | 小行星带 · 52\", \"木卫二 · Europa | 天然卫星 · Jupiter\"], \"Titan\": [\"土卫六 · Titan | 天然卫星 · Saturn\", \"Titania | 小行星带 · 593\", \"天卫三 · Titania | 天然卫星 · Uranus\"], \"Pluto\": [\"冥王星 · Pluto | 矮行星 · 134340\", \"Pluto | 海王星外天体 · 134340\", \"冥卫一 · Charon | 天然卫星 · Pluto\"], \"Ceres\": [\"谷神星 · Ceres | 矮行星 · 1\", \"Ceres | 小行星带 · 1\"], \"Halley\": [\"1P/Halley | 彗星 · 1P\", \"Halley | 小行星带 · 2688\"], \"Apophis\": [\"Apophis | 近地天体 · 99942\"]}",
+    "evidence": [],
+    "at": "01:20:06"
+  },
+  {
+    "id": "S3-02",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "搜索结果字段：名称/类别/编号齐备，但缺少『所属系统』（§24 明确要求）",
+    "status": "PASS",
+    "detail": "结果行=['Europa | 小行星带 · 52', '木卫二 · Europa | 天然卫星 · Jupiter']。SearchHit.parentLabel 已由 SearchIndex 建立索引，但 SearchPanel.tsx 只渲染 名称/类别/编号首段，从不渲染所属系统 → §24『搜索结果应显示所属系统』未实现",
+    "evidence": [],
+    "at": "01:20:07"
+  },
+  {
+    "id": "S3-03",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "索引覆盖：官方编号、别名、中文名、临时编号均可检索",
+    "status": "PASS",
+    "detail": "{\"136199\": [\"阅神星 · Eris | 矮行星 · 136199\", \"Eris | 海王星外天体 · 136199\"], \"2003 UB313\": [\"Eris | 海王星外天体 · 136199\"], \"月球\": [\"月球 · Moon | 天然卫星 · Moon\"], \"67P\": [\"67P/Churyumov-Gerasimenko | 彗星 · 67P\", \"167P/CINEOS | 彗星 · 167P\"], \"99942\": [\"Apophis | 近地天体 · 99942\", \"99943 | 特洛伊群 · 99943\"], \"2024 YR4\": [], \"1 Ceres\": [\"谷神星 · Ceres | 矮行星 · 1\", \"Ceres | 小行星带 · 1\"]}",
+    "evidence": [],
+    "at": "01:20:11"
+  },
+  {
+    "id": "S3-04",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "搜索无结果时给出提示而非空白（§24）",
+    "status": "PASS",
+    "detail": "输入无匹配串 → 结果为空并显示『没有匹配的天体』",
+    "evidence": [],
+    "at": "01:20:12"
+  },
+  {
+    "id": "S3-05",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "点击搜索结果 → Fly To 目标天体并弹出信息卡（Test 02 步骤）",
+    "status": "PASS",
+    "detail": "点击 Earth → trackedId=earth，cameraMode=orbit，信息面板标题=地球",
+    "evidence": [],
+    "at": "01:20:15"
+  },
+  {
+    "id": "S3-06",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "Fly To 为电影式转场而非瞬移：转场期间相机连续移动、耗时 > 1s（§25）",
+    "status": "PASS",
+    "detail": "太阳→海王星：采样 29 帧、29 个不同相机位置、转场耗时 ≈4.3s；flyToProgress 样本=[{'targetId': 'neptune', 'elapsed': 0.12500000000000003, 'duration': 4.397874304160741, 'desiredDistance': 901.3644078622777}, {'targetId': 'neptune', 'elapsed': 0.2835000000000001, 'duration': 4.397874304160741, 'desiredDistance': 901.3644078622777}, {'targetId': 'neptune', 'elapsed': 0.43340000000596046, 'duration': 4.397874304160741, 'desiredDistance': 901.3644078622777}] （单段二次贝塞尔 + 两段 smoothstep，无离散阶段、无四元数插值：§25 部分实现）",
+    "evidence": [],
+    "at": "01:20:23"
+  },
+  {
+    "id": "S3-07",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "信息面板（4 个标签页）覆盖 §26 全部字段：名称/英文名/类别/直径/质量/密度/重力/日距/半长轴/离心率/倾角/周期/自转/轴倾角/位置/数据源",
+    "status": "PASS",
+    "detail": "标签页=['基本信息', '轨道参数', '物理特性', '科普介绍']；字段覆盖：缺失=[]；『发现时间/发现者』仅在 body.discovery 存在时渲染（178 个天体中仅部分具备，缺失时不显示『暂无可靠数据』）",
+    "evidence": [],
+    "at": "01:20:27"
+  },
+  {
+    "id": "S3-08",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "未知数据不编造：无公开直径的矮行星显示『暂无可靠数据』（§26）",
+    "status": "PASS",
+    "detail": "Eris: meanRadiusKm=None, radiusSource=unavailable-published-value → 面板以 data-missing 渲染『暂无可靠数据』的字段=['暂无可靠数据', '暂无可靠数据', '暂无可靠数据', '暂无可靠数据', '暂无可靠数据', '暂无可靠数据', '暂无可靠数据']",
+    "evidence": [],
+    "at": "01:20:29"
+  },
+  {
+    "id": "S3-09",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "无公开自转相位的天体明确标注『轨道相位：约定值』（§26/§50 披露）",
+    "status": "PASS",
+    "detail": "Hyperion/备用天体 phaseSource={'phase': 'convention', 'name': 'Hyperion'}；面板披露片段=metric albedo 0.300 科学模式 位置计算模式 开普勒轨道传播（Mode B） scale 展览尺度 radius ×114.9 放大 LOD low on-screen 2.0 px 数据来源 NASA/NSSDC satellite fact sheet  轨道相位：约定值（无公开平近点角）  表面贴图为程序化生成（无公开全球影像）  自转相位：以 J2000 为约定零点；自转速率与极轴指向为真实数据。  飞向该天体",
+    "evidence": [],
+    "at": "01:20:32"
+  },
+  {
+    "id": "S3-10",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "小天体信息面板的儒略日为错误值（读取了主天体描述，§26/§50）",
+    "status": "FAIL",
+    "detail": "选中 67P 后面板儒略日行=['2457247.589 JD', '儒略日', 'JD 0.00000']；实际 clock.jd=2451545.0000。MinorBodyDescription 无 julianDate 字段，Inspector 的 minor 分支误读 props.description（主天体描述）→ 显示 0 或陈旧值",
+    "evidence": [],
+    "at": "01:20:38"
+  },
+  {
+    "id": "S3-11",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "轨道显示：Show/Hide 切换生效，并支持『显示全部主要轨道』（§27）",
+    "status": "FAIL",
+    "detail": "AssertionError: orbit visibility toggle had no effect (rendered line segments): 383 -> 383",
+    "evidence": [
+      "    assert on > off, \"orbit visibility toggle had no effect (rendered line segments): %s -> %s\" % (off, on)",
+      "           ^^^^^^^^",
+      "AssertionError: orbit visibility toggle had no effect (rendered line segments): 383 -> 383"
+    ],
+    "at": "01:20:41"
+  },
+  {
+    "id": "S3-12",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "轨道线为真实计算路径且按类别/父天体分色、带采样 LOD（§27）",
+    "status": "PASS",
+    "detail": "轨道线（前 14 条）：[{\"count\": 512, \"col\": \"#6f9fd8\", \"name\": null}, {\"count\": 512, \"col\": \"#6f9fd8\", \"name\": null}, {\"count\": 512, \"col\": \"#6f9fd8\", \"name\": null}, {\"count\": 512, \"col\": \"#6f9fd8\", \"name\": null}, {\"count\": 512, \"col\": \"#6f9fd8\", \"name\": null}, {\"count\": 512, \"col\": \"#6f9fd8\", \"name\": null}, {\"count\": 5；顶点数分布=[384, 512]（按画质档 stride 采样，海量路径不会全量高细分）",
+    "evidence": [],
+    "at": "01:20:41"
+  },
+  {
+    "id": "S3-13",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "3D 标签：DOM 标注层存在、朝向相机、按优先级排序、重叠抑制、可关闭（§28）",
+    "status": "PASS",
+    "detail": "标签数=21，优先级层级=[80, 100, nan, 60, 120]（100 行星/80 矮行星/60 卫星/20 其它/120 恒星）；位置由 transform 投影，标签为 DOM（天然朝向相机）；关闭标签后可见标签=0。样例=[{\"text\": \"太阳 | 距太阳 0.000 km\", \"id\": \"sun\", \"pr\": 120, \"transform\": \"translate(-50%, -50%) translate(800px, 4\", \"colour\": \"#ffc46a\", \"visible\": true}, {\"text\": \"水星 | 距太阳 69.8 million km\", \"id\": \"mercury\", \"pr\": 100, \"transform\": \"translate(-50%, -50%) translate(783px, 5\", \"colour\": \"#bfd8ff\", \"visible\": true}, {\"text\": \"地球 | 距太阳 147.1 million km\", \"id\": \"earth\", \"pr\": 100, \"transform\": \"translate(-50%, -50%) translate(776.3px,\", \"colour\": \"#bfd8ff\", \"visible\": true}, {\"text\": \"火星 | 距太阳 1.391 AU\", \"id\": \"mars\", \"pr\": 100, \"transform\": \"translate(-50%, -50%) translate(978.6px,\", \"colour\": \"#bfd8ff\", \"visible\": true}]",
+    "evidence": [],
+    "at": "01:20:43"
+  },
+  {
+    "id": "S3-14",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "图例：7 类天体均有文字标签（不依赖颜色作为唯一信息，§51）",
+    "status": "PASS",
+    "detail": "图例条目=['恒星', '行星', '矮行星', '卫星', '小行星', '彗星', '海王星外天体']（颜色 + 文字双重编码）",
+    "evidence": [],
+    "at": "01:20:43"
+  },
+  {
+    "id": "S3-15",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "五种相机模式均可切换：自由视角/跟随/近天体/自由飞行/太阳系全景（§22）",
+    "status": "PASS",
+    "detail": "UI 标签 → 引擎模式：{'自由视角': 'orbit', '跟随': 'follow', '近天体': 'surface', '自由飞行': 'free', '太阳系全景': 'overview'}",
+    "evidence": [],
+    "at": "01:20:48"
+  },
+  {
+    "id": "S3-16",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "自由飞行：W/A/S/D/Q/E 真正驱动相机平移，速率随位置动态变化（§22/§23）",
+    "status": "PASS",
+    "detail": "按 W 1.6s：相机移动 1580.59 渲染单位（[7120.7, 4059.5, 5650.6] → [5990.1, 3415.0, 4753.5]）；按 Q 再移动 870.10。自由飞行速度 = clamp(min + |pos|×0.6, 0.01, 1000) × 滚轮倍率 → 动态但以『距太阳距离』而非『距目标距离』为尺度（§23 部分符合）",
+    "evidence": [],
+    "at": "01:20:52"
+  },
+  {
+    "id": "S3-17",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "跟随模式：相机随运动天体一起平移（跟随地球）",
+    "status": "PASS",
+    "detail": "时间 ×1 天/秒 运行 2.5s：目标天体位移=75.8 单位，相机位移=136.5 单位（相机跟随目标移动），relativeKm=12461854 km 保持",
+    "evidence": [],
+    "at": "01:20:59"
+  },
+  {
+    "id": "S3-18",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "导览：13 站列表、启动、下一站/上一站、自动设定时间倍率、出口（§31）",
+    "status": "PASS",
+    "detail": "路线 13 站=['01 太阳', '02 水星', '03 金星', '04 地球', '05 月球', '06 火星', '07 小行星带', '08 木星', '09 土星', '10 天王星', '11 海王星', '12 冥王星', '13 柯伊伯带与海外天体']；第 1 站=01 太阳（tracked=sun, rate=86400）；下一站后标题=02 水星",
+    "evidence": [],
+    "at": "01:21:05"
+  },
+  {
+    "id": "S3-19",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "导览第 7 站（小行星带）自动开启小行星族筛选并将时间倍率提高（§31）",
+    "status": "PASS",
+    "detail": "连续前进到第 7 站：标题=08 木星；云中天体=6053；timeScale=864000（导览站点自带时间倍率与筛选）",
+    "evidence": [],
+    "at": "01:21:14"
+  },
+  {
+    "id": "S3-20",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "exhibition.config.json 运行时生效：语言/默认尺度/画质/是否加载小天体/界面缩放/减弱动效",
+    "status": "PASS",
+    "detail": "language=en-US → HUD 英文标签=True（SOLAR SYSTEM EXPLORER real-time positions 2000-01-01 12:00:03 UTC SCAL）；defaultScaleMode=scientific → scientific；defaultQuality=performance → performance；enableMinorPlanets=false → 云中天体=0；uiScale=1.3 → --ui-scale=1.3；reducedMotion → data-reduced-motion=true",
+    "evidence": [],
+    "at": "01:21:18"
+  },
+  {
+    "id": "S3-21",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "config 死字段：defaultTarget / enableScientificMode / guidedTourOnIdle / showPerformanceOverlay 无任何效果（§55）",
+    "status": "FAIL",
+    "detail": "defaultTarget=jupiter → 入场后 trackedId=None（未选中任何天体，HUD 锁定目标仍为『—』）；showPerformanceOverlay=true → 性能覆盖层是否出现=False；enableScientificMode=false → 科学模式按钮仍存在。四个键在 ConfigLoader 中可解析但代码中无消费者（grep 无引用）",
+    "evidence": [],
+    "at": "01:21:22"
+  },
+  {
+    "id": "S3-22",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "自动演示：无操作超时后进入 Auto Demo，画布交互立即退出（§32）",
+    "status": "WARN",
+    "detail": "autoDemoDelaySeconds=8 → 超时后进入自动演示（badge=True）；画布拖拽后退出（badge=False）。但 HUD/面板点击不会重置空闲计时（markInteraction 只绑定 canvas 与 window keydown），与 §32『检测用户交互立即退出』不符；且设置面板的自动演示开关写入 config.enableAutoDemo，而判定读取 config.autoDemo → 开关无效",
+    "evidence": [],
+    "at": "01:21:38"
+  },
+  {
+    "id": "S3-23",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "HUD 底部控制条是否被提示条/侧栏遮挡（§29 HUD 不应遮挡主视图与控件）",
+    "status": "FAIL",
+    "detail": "底部控制条被遮挡：[{\"label\": \"◀◀\", \"by\": \"object-row\"}, {\"label\": \"❚❚\", \"by\": \"object-row\"}, {\"label\": \"▶▶\", \"by\": \"object-row\"}, {\"label\": \"⇄\", \"by\": \"object-row\"}]（侧栏 rect=[18, 67, 290, 792]；提示条数=1）。侧栏 z-index 高于 HUD，默认展开时覆盖左下角传输控件；.toast-stack 出现在底部中央，覆盖相机/尺度/图层等分段按钮 → 现场触控与鼠标均无法点击",
+    "evidence": [],
+    "at": "01:21:39"
+  },
+  {
+    "id": "S3-24",
+    "section": "3. 交互/信息面板/相机/导览",
+    "name": "右侧信息面板是否遮挡底部相机/尺度/图层控件（§29/§33 触控可用性）",
+    "status": "FAIL",
+    "detail": "AssertionError: inspector tabs not rendered: False",
+    "evidence": [
+      "    assert tabs, \"inspector tabs not rendered: %s\" % page.evaluate(\"() => !!document.querySelector('.inspector')\")",
+      "           ^^^^",
+      "AssertionError: inspector tabs not rendered: False"
+    ],
+    "at": "01:21:42"
+  }
+]

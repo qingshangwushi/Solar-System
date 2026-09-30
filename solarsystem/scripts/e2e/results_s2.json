@@ -1,0 +1,164 @@
+[
+  {
+    "id": "S2-01",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "渲染空间坐标系判定：位置是否被旋转到 Y-up 场景系（§10/§11 单一坐标系）",
+    "status": "PASS",
+    "detail": "地球 J2000 黄经=100.378°；引擎渲染位置方向=[-0.1801, 0.9836, -0.0]；若已旋入 Y-up 场景系应为 [-0.1801, -0.0, -0.9836]（+Y 为黄极）→ 实测 z≈0、y 为大分量，说明渲染空间仍是黄道基（未应用 ECLIPTIC_TO_SCENE）；而 sunDirection/星空被旋入场景基 ⇒ 光照与几何不同帧",
+    "evidence": [
+      "absoluteUnits=[-305.892, 1670.216, -0.0]",
+      "heliocentricKm=[-26500189.0, 144694985.0, -3.0]"
+    ],
+    "at": "00:51:42"
+  },
+  {
+    "id": "S2-02",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "H2 确认：着色器太阳方向与真实渲染空间方向夹角（日夜光照正确性，§13/§14）",
+    "status": "FAIL",
+    "detail": "uSunDirection（喂给表面着色器）与几何真实的『天体→太阳』方向夹角：{'mercury': 85.54, 'venus': 5.9, 'earth': 88.14, 'mars': 2.15, 'jupiter': 49.51, 'saturn': 60.88, 'uranus': 58.36, 'neptune': 71.85} 度。高于 20° 即意味着昼夜终止线画在错误方位；实测最差 88.1°。根因：几何在黄道基、光照方向被 ECLIPTIC_TO_SCENE 旋入场景基（(x,y,z)→(x,-z,y)），仅在黄道 X 轴附近（金星/火星）误差才趋近 0",
+    "evidence": [],
+    "at": "00:51:42"
+  },
+  {
+    "id": "S2-03",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "H2 视觉验证：把相机分别放在向阳面与背阳面，比较地球圆面亮度（§14 日夜光照）",
+    "status": "FAIL",
+    "detail": "向阳面圆面平均亮度=212.5（亮像素占比=1）vs 背阳面=212.1（亮像素=1）；比值=1.002。若终止线正确，向阳面应几乎全亮、背阳面几乎全暗（比值 ≫ 3）；实测接近 1 即证明 ~88° 的方位错误",
+    "evidence": [
+      "{\"mean\": 212.5344375122123, \"litFraction\": 1, \"max\": 221.07219999999998, \"radiusPixels\": 366.34064972256596, \"samples\": 16384, \"cameraDistUnits\": 285.4208000000001}",
+      "{\"mean\": 212.07212280273995, \"litFraction\": 1, \"max\": 220.9278, \"radiusPixels\": 366.34064972256596, \"samples\": 16384, \"cameraDistUnits\": 285.4208000000001}"
+    ],
+    "at": "00:51:48"
+  },
+  {
+    "id": "S2-04",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "H1 确认：天体自转轴（frame +Z）随时间漂移，与 IAU 极轴不符（§14/§15 自转轴倾角）",
+    "status": "FAIL",
+    "detail": "frame 的 +Z（应为固定自转极轴）在 12 小时内漂移：[{\"body\": \"earth\", \"axis_t0\": [0.0, 0.3978, 0.9175], \"expected_pole\": [0.0, 0.3978, 0.9175], \"err_vs_pole_t0_deg\": 0.0, \"drift_12h_deg\": 179.51, \"drift_6h_deg\": 90.25}, {\"body\": \"mars\", \"axis_t0\": [0.5896, -0.34, 0.7326], \"expected_pole\": [0.4462, -0.0555, 0.8932], \"err_vs_pole_t0_deg\": 20.56, \"drift_12h_deg\": 175.45, \"drift_6h_deg\": 87.72}, {\"body\": \"jupiter\", \"axis_t0\": [-0.0306, -0.0362, 0.9989], \"expected_pole\": [-0.0146, -0.0358, 0.9993], \"err_vs_pole_t0_deg\": 0.92, \"drift_12h_deg\": 75.26, \"drift_6h_deg\": 142.37}, {\"body\": \"saturn\", \"axis_t0\": [0.7546, -0.3604, -0.5484], \"expected_pole\": [0.0855, 0.4624, 0.8825], \"err_vs_pole_t0_deg\": 125.88, \"drift_12h_deg\": 45.41, \"drift_6h_deg\": 157.3}, {\"body\": \"uranus\", \"axis_t0\": [0.0575, -0.9871, 0.1496], \"expected_pole\": [-0.212, -0.968, 0.1344], \"err_vs_pole_t0_deg\": 15.55, \"drift_12h_deg\": 109.42, \"drift_6h_deg\": 125.29}]。根因：BodyRenderer 用 ECLIPTIC_TO_SCENE·M·SCENE_TO_ECLIPTIC 作基变换，把『绕极轴自转』变成了『极轴本身在转』；同时土星/火星在 t0 就与 IAU 极轴不符",
+    "evidence": [],
+    "at": "00:51:52"
+  },
+  {
+    "id": "S2-05",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "H1 视觉验证：土星环平面在 6 小时内应保持不变（§16 环须位于赤道面/自转轴）",
+    "status": "FAIL",
+    "detail": "土星环世界法线 t0=[0.7546, -0.3604, -0.5484]，t+6h=[-0.9472, 0.2159, 0.237] → 夹角 157.30°。环平面随时间翻转，说明环并未稳定位于赤道面（视觉上与设计文档 §16 及项目自身 docs/coordinate-system.md 冲突）",
+    "evidence": [],
+    "at": "00:51:55"
+  },
+  {
+    "id": "S2-06",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "环系存在性：木星/土星/天王星/海王星四套环，且构造于天体赤道面（§16）",
+    "status": "PASS",
+    "detail": "4 套环均挂在天体 frame 的 XY 平面（法线=frame +Z=极轴，dot=[1, 1.0, 1, 1]），故构造上是赤道面而非世界 XZ 平面；但 frame 姿态本身有误（见 S2-04/05）：[{\"body\": \"body:jupiter\", \"planeNormalY\": 0.03694228544402319, \"dotWithFrameZ\": 1, \"inner\": 1.4, \"outer\": 1.81}, {\"body\": \"body:saturn\", \"planeNormalY\": 0.2159231292052499, \"dotWithFrameZ\": 1.0000000000000002, \"inner\": 1.11, \"outer\": 2.27}, {\"body\": \"body:uran",
+    "evidence": [],
+    "at": "00:51:55"
+  },
+  {
+    "id": "S2-07",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "浮动原点：three.js 相机固定在原点、原点=相机位置、启用对数深度（§11）",
+    "status": "PASS",
+    "detail": "three.js 相机位置=[0, 0, 0]（恒为原点，GPU 只接收相机相对坐标）；浮动原点 originUnits==cameraUnits（|Δ|=0）；near=0.0001 far=1e+09；对数深度=True",
+    "evidence": [],
+    "at": "00:51:55"
+  },
+  {
+    "id": "S2-08",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "恒星背景层：真实 HYG 星表、挂载于相机（无视差）、单次绘制（§21）",
+    "status": "FAIL",
+    "detail": "AssertionError: star layer is not parented to the camera (parallax would appear)",
+    "evidence": [
+      "    assert cam_mounted, \"star layer is not parented to the camera (parallax would appear)\"",
+      "           ^^^^^^^^^^^",
+      "AssertionError: star layer is not parented to the camera (parallax would appear)"
+    ],
+    "at": "00:51:55"
+  },
+  {
+    "id": "S2-09",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "后处理：Bloom + OutputPass + ACES 色调映射存在；FXAA/SMAA/vignette 缺失（§43）",
+    "status": "WARN",
+    "detail": "存在 RenderPass/UnrealBloomPass/OutputPass；toneMapping=4（ACESFilmic=4）、bloom 强度=0.55、对数深度=True；缺失 §43 要求的抗锯齿与暗角：['fxaaPass', 'smaaPass', 'vignettePass']（且 EffectComposer 目标无 MSAA，构造时 antialias:true 实际无效）",
+    "evidence": [],
+    "at": "00:51:55"
+  },
+  {
+    "id": "S2-10",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "近距 LOD 下地球材质齐备：日面/夜灯/法线/镜面/云层/大气（§15）",
+    "status": "FAIL",
+    "detail": "AssertionError: {'tier': 'close', 'hasMap': True, 'hasNormal': False, 'hasNight': False, 'specular': False, 'clouds': True, 'atmosphere': True, 'children': [], 'axialTiltDeg': 23.44, 'periodHours': 23.9345}",
+    "evidence": [
+      "    assert diag[\"hasMap\"] and diag[\"hasNormal\"] and diag[\"hasNight\"] and diag[\"specular\"], diag",
+      "           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+      "AssertionError: {'tier': 'close', 'hasMap': True, 'hasNormal': False, 'hasNight': False, 'specular': False, 'clouds': True, 'atmosphere': True, 'children': [], 'axialTiltDeg': 23.44, 'periodHours': 23.9345}"
+    ],
+    "at": "00:52:02"
+  },
+  {
+    "id": "S2-11",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "LOD 按投影像素分级：远→point、近→close（§39）",
+    "status": "FAIL",
+    "detail": "AssertionError: {'ratio_60.0': ('close', 166.7), 'ratio_6.0': ('close', 173.3), 'ratio_2.2': ('close', 175.8)}",
+    "evidence": [
+      "    assert \"point\" in vals or \"low\" in vals, tiers",
+      "           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+      "AssertionError: {'ratio_60.0': ('close', 166.7), 'ratio_6.0': ('close', 173.3), 'ratio_2.2': ('close', 175.8)}"
+    ],
+    "at": "00:52:09"
+  },
+  {
+    "id": "S2-12",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "贴图按需流式加载：启动不下载贴图，进入近距后才请求（§40/§62-9）",
+    "status": "PASS",
+    "detail": "启动至今贴图请求 16 个（earth-day.jpg…）；启动首帧阶段未批量加载 2K/4K 贴图，仅在投影半径≥5px 时按需请求（代码路径 SolarSystemEngine.frameStep）",
+    "evidence": [],
+    "at": "00:52:09"
+  },
+  {
+    "id": "S2-13",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "轨道线为真实计算路径（椭圆采样，非默认圆环），并带 LOD 采样上限（§27）",
+    "status": "PASS",
+    "detail": "最长轨道线顶点=512；半径 min=1769.87 max=8808.48 单位 → 比值 4.977（>1 即椭圆/真实轨迹）；引擎报告 orbitPaths=3，轨道采样上限随画质档变化",
+    "evidence": [],
+    "at": "00:52:09"
+  },
+  {
+    "id": "S2-14",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "小天体为单个 GPU 点云（无 per-object Mesh/Object3D，§38）",
+    "status": "PASS",
+    "detail": "开启后点云对象数=32（应≈2：恒星层+小天体层），Mesh 数=72（仅 178 个编目天体 + 环/大气/云），云中对象=10984 → 10984 个小天体共享 1 次 draw call，无 per-object Object3D：{\"points\": 32, \"meshes\": 72, \"scenes\": 3, \"cloud\": 10984}",
+    "evidence": [],
+    "at": "00:52:13"
+  },
+  {
+    "id": "S2-15",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "光源实现：场景中不存在 PointLight/DirectionalLight/AmbientLight，纯着色器光照（§13）",
+    "status": "PASS",
+    "detail": "场景中光源对象数=0（太阳作为唯一光源，通过 uSunDirection 方向项着色，避免大尺度 PointLight 强度失真）；太阳子节点=['SphereGeometry', 'SphereGeometry']",
+    "evidence": [],
+    "at": "00:52:13"
+  },
+  {
+    "id": "S2-16",
+    "section": "2. 渲染/坐标系/科学保真",
+    "name": "太阳表现：自发光着色器 + 日冕/辉光壳 + Bloom（§13）",
+    "status": "PASS",
+    "detail": "太阳着色器 uniforms=['uMap', 'uTime', 'uColor']（含时间驱动的表面对流/自发光）；子节点=[{\"t\": \"SphereGeometry\", \"u\": [\"uMap\", \"uTime\", \"uColor\"]}, {\"t\": \"SphereGeometry\", \"u\": [\"uColor\", \"uIntensity\", \"uPower\"]}]；bloom 强度=0.55",
+    "evidence": [],
+    "at": "00:52:15"
+  }
+]

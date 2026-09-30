@@ -12,15 +12,20 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "data:minor-bodies": "node scripts/update-minor-bodies.mjs",
+    "data:asteroids": "node scripts/update-asteroids.mjs",
+    "data:comets": "node scripts/update-comets.mjs",
     "data:planets": "node scripts/update-planets.mjs",
     "data:satellites": "node scripts/update-satellites.mjs",
     "data:stars": "node scripts/update-stars.mjs",
     "data:textures": "node scripts/update-textures.mjs",
     "data:build": "node scripts/build-catalog.mjs",
-    "data:all": "npm run data:minor-bodies && npm run data:planets && npm run data:satellites && npm run data:stars && npm run data:textures && npm run data:build",
+    "data:all": "npm run data:minor-bodies && npm run data:asteroids && npm run data:comets && npm run data:planets && npm run data:satellites && npm run data:stars && npm run data:textures && npm run data:build",
+    "generate:ephemeris": "node scripts/generate-ephemeris.mjs",
     "verify:ephemeris": "node scripts/verify-ephemeris.mjs",
     "smoke-test": "node scripts/smoke-test.mjs",
-    "verify:all": "npm run typecheck && npm run test && npm run verify:ephemeris && npm run build"
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "verify:all": "npm run typecheck && npm run test && npm run verify:ephemeris && npm run build && npm run test:smoke",
+    "test:fixes": "node scripts/e2e/verify-fixes.mjs"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",
@@ -36,6 +41,7 @@
     "@types/react-dom": "^19.2.7",
     "@types/three": "^0.181.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "playwright-core": "^1.63.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^3.2.4"

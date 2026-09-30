@@ -39,6 +39,14 @@ export interface MinorBodyRenderItem {
   diameterKm: number | null
   /** Heliocentric ecliptic position, kilometres. */
   positionKm: { x: number; y: number; z: number }
+  /**
+   * False until a propagation has actually produced a position for the current
+   * instant. The information panel refuses to report distance or speed while it is
+   * false, instead of showing the (0,0,0) placeholder as if it were data (P0-4).
+   */
+  positionValid: boolean
+  /** Julian Date the stored position refers to; NaN before the first propagation. */
+  positionJulianDate: number
 }
 
 export interface MinorBodyRenderStats {
@@ -93,8 +101,9 @@ export class MinorBodyRenderer {
   }
 
   private ensureCapacity(count: number): void {
-    if (count <= this.capacity) return
-    this.capacity = Math.max(count, Math.ceil(this.capacity * 1.3) || 1024)
+    const target = Math.max(count, 16)
+    if (target <= this.capacity) return
+    this.capacity = Math.max(target, Math.ceil(this.capacity * 1.3) || 1024)
     const positions = new Float32Array(this.capacity * 3)
     const colours = new Float32Array(this.capacity * 3)
     const sizes = new Float32Array(this.capacity)
@@ -121,36 +130,42 @@ export class MinorBodyRenderer {
     const sizeArray = sizes.array as Float32Array
     const magnitudeArray = magnitudes.array as Float32Array
 
+    let drawn = 0
     for (let slot = 0; slot < items.length; slot++) {
       const item = items[slot]
+      // An item only reaches the vertex buffer once a propagation has produced a
+      // real position; otherwise a stale (0,0,0) placeholder would be drawn on top
+      // of the Sun (P0-4).
+      if (!item.positionValid) continue
       origin.relative(item.positionKm, scale, this.sceneFrameOrigin)
-      positionArray[slot * 3] = this.sceneFrameOrigin.x
-      positionArray[slot * 3 + 1] = this.sceneFrameOrigin.y
-      positionArray[slot * 3 + 2] = this.sceneFrameOrigin.z
+      positionArray[drawn * 3] = this.sceneFrameOrigin.x
+      positionArray[drawn * 3 + 1] = this.sceneFrameOrigin.y
+      positionArray[drawn * 3 + 2] = this.sceneFrameOrigin.z
 
       const colour = BUCKET_COLOURS[item.bucket] ?? BUCKET_COLOURS.mainBelt
-      colourArray[slot * 3] = colour[0]
-      colourArray[slot * 3 + 1] = colour[1]
-      colourArray[slot * 3 + 2] = colour[2]
+      colourArray[drawn * 3] = colour[0]
+      colourArray[drawn * 3 + 1] = colour[1]
+      colourArray[drawn * 3 + 2] = colour[2]
 
       const magnitude = item.absoluteMagnitude ?? 12
-      magnitudeArray[slot] = magnitude
+      magnitudeArray[drawn] = magnitude
       // Brighter objects (lower H) and larger diameters get a bigger marker; the
       // scale is a display convention, documented in the legend.
       const sizeFromMagnitude = Math.max(0.6, 4.2 - Math.min(6, Math.max(-2, magnitude)) * 0.28)
       const sizeFromDiameter = item.diameterKm ? Math.min(3, Math.log10(Math.max(10, item.diameterKm)) - 1.4) : 0
-      sizeArray[slot] = Math.max(0.6, sizeFromMagnitude + sizeFromDiameter)
+      sizeArray[drawn] = Math.max(0.6, sizeFromMagnitude + sizeFromDiameter)
+      drawn += 1
     }
 
     positions.needsUpdate = true
     colours.needsUpdate = true
     sizes.needsUpdate = true
     magnitudes.needsUpdate = true
-    this.geometry.setDrawRange(0, items.length)
+    this.geometry.setDrawRange(0, drawn)
     this.geometry.computeBoundingSphere()
-    this.renderedCount = items.length
+    this.renderedCount = drawn
 
-    return { rendered: items.length, drawCalls: 1, points: items.length }
+    return { rendered: drawn, drawCalls: drawn > 0 ? 1 : 0, points: drawn }
   }
 
   /** Highlight radius used by the camera when framing the whole minor-body set. */
